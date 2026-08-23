@@ -1,0 +1,119 @@
+{
+  "name": "ume-harness",
+  "version": "0.1.0",
+  "description": "Portable decision-logic core (Authority Overlay + Clarification Impact Contract) with a Japanese Human Layer for non-engineer delegation, validated against Claude Sonnet 5 (v0). Gemma support deferred (see status).",
+  "license": "MIT",
+  "repository": "https://github.com/UMEBOSHIISAN/ume-harness",
+  "status": {
+    "supported_models_v0": [
+      "claude-sonnet-5"
+    ],
+    "deferred_models": [
+      "gemma4:12b-it-qat"
+    ],
+    "deferred_reason": "Semantic Gate (Case1 v2 Sampling Contract) measured pooled PRUNABLE_PRESENT=93.3% for Gemma vs 0.0% for Claude. Not a Structural Gate defect; tracked as a future ticket.",
+    "note": "bin/ume-harness is the single implemented CLI entrypoint. adapters/claude-code/lease_gate_runner.py and pretooluse_hook.py are implemented standard Claude Code adapters. scripts/install.sh, uninstall.sh, health_check.py provide portable prefix installation and verification.",
+    "portability_trial": "PORTABLE_REPRODUCIBLE — independently reproducible from README by fresh-context agents and verified on physical Mac nodes."
+  },
+  "install_payload": [
+    "bin/ume-harness",
+    "runtime/activation_updater.py",
+    "runtime/decision_state.py",
+    "runtime/human_layer_adapter.py",
+    "runtime/local_execution_gate.py",
+    "runtime/local_execution_lease.py",
+    "runtime/local_execution_lease_state.py",
+    "runtime/stop_adapter.py",
+    "runtime/tool_policy.py",
+    "contracts/authority_contract.md",
+    "contracts/autonomous_stop.md",
+    "contracts/task_intake.md",
+    "contracts/tool_policy.md",
+    "schemas/intent_interpreter_output.schema.json",
+    "adapters/claude-code/lease_gate_runner.py",
+    "adapters/claude-code/pretooluse_hook.py",
+    "adapters/claude-code/README.md",
+    "adapters/claude-code/settings.json.fragment",
+    "ux/japanese-human-layer/README.md",
+    "ux/japanese-human-layer/contracts/human_request_contract.md",
+    "ux/japanese-human-layer/fixtures/expected_behavior.jsonl",
+    "ux/japanese-human-layer/fixtures/vague_requests_ja.jsonl",
+    "ux/japanese-human-layer/prompts/clarification_batcher.md",
+    "ux/japanese-human-layer/prompts/execution_preview.md",
+    "ux/japanese-human-layer/prompts/intent_interpreter.md",
+    "ux/japanese-human-layer/prompts/result_presenter.md",
+    "package_manifest.json",
+    "VERSION",
+    "NOTICE",
+    "LICENSE"
+  ],
+  "components": {
+    "bin": [
+      "bin/ume-harness"
+    ],
+    "contracts": [
+      "contracts/authority_contract.md",
+      "contracts/tool_policy.md",
+      "contracts/autonomous_stop.md",
+      "contracts/task_intake.md"
+    ],
+    "runtime": [
+      "runtime/tool_policy.py",
+      "runtime/human_layer_adapter.py",
+      "runtime/decision_state.py",
+      "runtime/stop_adapter.py",
+      "runtime/local_execution_lease.py",
+      "runtime/local_execution_lease_state.py",
+      "runtime/local_execution_gate.py",
+      "runtime/activation_updater.py"
+    ],
+    "ux": [
+      "ux/japanese-human-layer/README.md",
+      "ux/japanese-human-layer/prompts/intent_interpreter.md",
+      "ux/japanese-human-layer/prompts/clarification_batcher.md",
+      "ux/japanese-human-layer/prompts/execution_preview.md",
+      "ux/japanese-human-layer/prompts/result_presenter.md",
+      "ux/japanese-human-layer/contracts/human_request_contract.md",
+      "ux/japanese-human-layer/fixtures/vague_requests_ja.jsonl",
+      "ux/japanese-human-layer/fixtures/expected_behavior.jsonl"
+    ],
+    "adapters": [
+      "adapters/claude-code/README.md",
+      "adapters/claude-code/settings.json.fragment",
+      "adapters/claude-code/pretooluse_hook.py (IMPLEMENTED — tested, see tests/test_claude_code_adapter.py)",
+      "adapters/claude-code/lease_gate_runner.py"
+    ],
+    "scripts": [
+      "scripts/install.sh",
+      "scripts/uninstall.sh",
+      "scripts/health_check.py"
+    ],
+    "tests": [
+      "tests/test_portable_core.py",
+      "tests/test_human_layer_adapter.py",
+      "tests/test_cli.py",
+      "tests/test_claude_code_adapter.py",
+      "tests/test_local_execution_lease.py",
+      "tests/test_local_execution_lease_state.py",
+      "tests/test_local_execution_gate.py",
+      "tests/case1_acceptance_v2_spec.md",
+      "tests/case1_v2_sampling_contract.md",
+      "tests/evidence/INDEX.md (raw evidence directories are excluded from this manifest; see INDEX.md)"
+    ],
+    "design": [
+      "design/clarification_impact_contract_v0.md"
+    ],
+    "schemas": [
+      "schemas/intent_interpreter_output.schema.json"
+    ],
+    "examples": [
+      "examples/basic_usage.md"
+    ],
+    "meta": [
+      "VERSION",
+      "NOTICE",
+      "SUPPORT_MATRIX.md",
+      "MANIFEST.md",
+    ]
+  }
+}

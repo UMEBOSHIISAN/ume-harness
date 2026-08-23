@@ -1,0 +1,4 @@
+{"case_id": "case_1", "raw_input": "このフォルダの資料まとめて、必要ならREADMEもいい感じに直しといて", "category": "EDIT_CREATE"}
+{"case_id": "case_2", "raw_input": "前みたいにこれお願い", "category": "RESEARCH_OR_EDIT"}
+{"case_id": "case_3", "raw_input": "この辺いらんやつ消しといて", "category": "ORGANIZE_DESTRUCTIVE"}
+{"case_id": "case_4", "raw_input": "これいい感じにまとめて先方に送っといて", "category": "EDIT_THEN_EXTERNAL"}

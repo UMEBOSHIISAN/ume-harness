@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ume-harness.local/schemas/intent_interpreter_output.v0.json",
+  "title": "intent_interpreter_output.v0",
+  "description": "ux/japanese-human-layer/prompts/intent_interpreter.md が要求するLLM出力の形式定義。runtime/human_layer_adapter.py の実装（Rev.2・FROZEN）と1:1対応する。このschemaはドキュメント/バリデーション用途であり、runtime側の正本はPythonコード（normalize_impact_value/is_valid_basis等）である。両者が食い違った場合はコードを正とする。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["work_type", "inferred_intent", "inferred_deliverable", "candidate_actions", "clarification_assessments"],
+  "properties": {
+    "work_type": {
+      "type": ["string", "null"],
+      "enum": ["RESEARCH", "EDIT_CREATE", "ORGANIZE", null],
+      "description": "これ以外の値（空文字・パイプ区切り等）はruntime側でnullへ正規化される（work_type=None, classification_status=UNRESOLVED）。"
+    },
+    "inferred_intent": { "type": "string" },
+    "inferred_deliverable": { "type": "string" },
+    "candidate_actions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Authority Overlay（tool_policy.py）が独立に再分類する。この配列の内容をLLMがどう自己評価しているかはruntimeで一切信用されない。"
+    },
+    "clarification_assessments": {
+      "type": "array",
+      "description": "必須フィールド。欠落・null・非array型はruntime側でBLOCK（fail-safe）扱いになる。空配列[]は「聞くべきことはない」という正当な主張として受理される。",
+      "items": { "$ref": "#/$defs/clarificationAssessment" }
+    }
+  },
+  "$defs": {
+    "impactValue": {
+      "type": "string",
+      "enum": ["true", "false", "unknown"],
+      "description": "文字列の3値のみ有効。JSON native boolean（true/false）・欠落・null・その他の文字列は全てruntime側でUNKNOWN相当に正規化される（normalize_impact_value）。"
+    },
+    "basis": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string", "enum": ["explicit_request", "not_applicable"] },
+        "refs": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1,
+          "description": "kind=explicit_requestの場合に必須。"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "description": "kind=not_applicableの場合に必須。"
+        }
+      },
+      "description": "impactの値が'false'の次元にのみ必須。この形式的完全性チェックのみをruntimeは行い、内容の意味的正しさは検証しない（KNOWN_RESIDUAL_SEMANTIC_RISK・design/clarification_impact_contract_v0.md参照）。"
+    },
+    "clarificationImpact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["authority_boundary", "mutation_target", "destructive_effect", "external_effect", "requested_scope", "costly_rollback"],
+      "properties": {
+        "authority_boundary": { "$ref": "#/$defs/impactValue" },
+        "mutation_target": { "$ref": "#/$defs/impactValue" },
+        "destructive_effect": { "$ref": "#/$defs/impactValue" },
+        "external_effect": { "$ref": "#/$defs/impactValue" },
+        "requested_scope": { "$ref": "#/$defs/impactValue" },
+        "costly_rollback": { "$ref": "#/$defs/impactValue" }
+      }
+    },
+    "clarificationAssessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["question", "missing_information", "impact", "basis"],
+      "properties": {
+        "question": {
+          "type": ["string", "null"],
+          "description": "決定がASKになった場合は非空文字列が必須（欠落/空ならBLOCKへfail closed）。SUPPRESSの場合のみnull許容。"
+        },
+        "missing_information": {
+          "type": ["string", "null"],
+          "description": "annotation専用。ASK/SUPPRESSの決定には一切使われない（missing_information自体を書き換えても決定は変わらない）。"
+        },
+        "impact": { "$ref": "#/$defs/clarificationImpact" },
+        "basis": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "authority_boundary": { "$ref": "#/$defs/basis" },
+            "mutation_target": { "$ref": "#/$defs/basis" },
+            "destructive_effect": { "$ref": "#/$defs/basis" },
+            "external_effect": { "$ref": "#/$defs/basis" },
+            "requested_scope": { "$ref": "#/$defs/basis" },
+            "costly_rollback": { "$ref": "#/$defs/basis" }
+          }
+        }
+      }
+    }
+  }
+}

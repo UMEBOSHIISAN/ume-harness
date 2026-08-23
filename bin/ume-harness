@@ -1,0 +1,200 @@
+#!/usr/bin/env python3
+"""
+ume-harness — 単一の非エンジニア向けCLI入口（P0-1・Usability Closure）
+
+Human → 日本語で依頼 → このCLI → Harness(intent_interpreter + human_layer_adapter)
+→ 「今回やること / 確認が必要なこと / 質問」を自然語で提示
+
+設計原則（P0-3・human裁定「Tierを選んでくださいにしたら思想的に負け」）:
+  - TierはCore内部でTIER_NORMALに固定する。利用者に選ばせない。
+  - 内部語彙（ux/japanese-human-layer/contracts/human_request_contract.md §3の
+    禁止語彙）を画面に一切出さない。
+
+対応モデル: Claude Sonnet 5のみ（SUPPORT_MATRIX.md参照）。`claude` CLIが必要。
+オフラインテスト用に --llm-output-file で既存のLLM出力JSONを直接読み込むモードもある
+（このモードは `claude` CLI不要・API呼び出しなし）。
+
+Core semantics（tool_policy.py / human_layer_adapter.pyの決定ロジック）は
+本ファイルから一切変更しない。このCLIはCore APIの呼び出し側（consumer）に過ぎない。
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+
+_PKG_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_RUNTIME = os.path.join(_PKG_ROOT, "runtime")
+_LAYER = os.path.join(_PKG_ROOT, "ux", "japanese-human-layer")
+sys.path.insert(0, _RUNTIME)
+
+import human_layer_adapter as hla  # noqa: E402
+import tool_policy as tp  # noqa: E402
+
+
+def _extract_json(text: str):
+    if not text:
+        return None
+    m = re.search(r"\{.*\}", text, re.DOTALL)
+    if not m:
+        return None
+    try:
+        return json.loads(m.group(0))
+    except Exception:
+        return None
+
+
+def build_intent_prompt(raw_request: str, workspace_context: str) -> str:
+    prompt_path = os.path.join(_LAYER, "prompts", "intent_interpreter.md")
+    with open(prompt_path, encoding="utf-8") as f:
+        template = f.read()
+    return (
+        template
+        + "\n\n---\n\n## 実行\n\n"
+        + f"raw_request: {raw_request}\n"
+        + f"workspace_context: {workspace_context}\n\n"
+        + "上記スキーマに従い、JSONのみを出力してください。説明文は不要です。"
+    )
+
+
+def call_claude_for_interpretation(raw_request: str, workspace_context: str) -> dict:
+    """`claude -p --model sonnet` を呼び、intent_interpreter.mdスキーマのJSONを得る。
+    唯一の対応モデル（SUPPORT_MATRIX.md）。他モデルでの動作は保証しない。"""
+    prompt = build_intent_prompt(raw_request, workspace_context)
+    proc = subprocess.run(
+        ["claude", "-p", "--model", "sonnet", "--output-format", "json", prompt],
+        capture_output=True, text=True, timeout=120,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(f"claude CLI呼び出しに失敗しました（exit={proc.returncode}）: {proc.stderr[:300]}")
+    envelope = json.loads(proc.stdout)
+    text = envelope.get("result", "")
+    parsed = _extract_json(text)
+    if parsed is None:
+        raise RuntimeError(f"LLM出力からJSONを抽出できませんでした。生出力: {text[:300]!r}")
+    return parsed
+
+
+# --- 自然語レンダリング（決定論的Python実装。内部語彙を出さない） ---
+# ux/japanese-human-layer/contracts/human_request_contract.md §3の禁止語彙リストに
+# 準拠（task_class, risk_tags, scope_digest, authority_touch, execution_effect,
+# canonical decision, manifest, HOLD, classifier, gate, verification=PASS 等は使わない）。
+
+def render_report(result: hla.NormalizedInterpretation) -> tuple[str, str]:
+    """(表示テキスト, headline_state) を返す。
+    headline_state は "HELD" | "ASK" | "APPROVAL_REQUIRED" | "DONE" のいずれか
+    （優先順位: HELD > ASK > APPROVAL_REQUIRED > DONE）。"""
+    lines = []
+    lines.append("━" * 32)
+    lines.append("📋 依頼の内容整理")
+    lines.append("")
+
+    if result.clarification_blocked:
+        lines.append("⚠️ 依頼の解釈が不完全なため、そのまま進められません。")
+        if result.blocked_clarification_notes:
+            lines.append("以下の点で判断できない部分がありました:")
+            for note in result.blocked_clarification_notes:
+                lines.append(f"  - {note}")
+        lines.append("")
+        lines.append("お手数ですが、依頼文をもう少し具体的にして再度お試しください。")
+        lines.append("━" * 32)
+        return "\n".join(lines), "HELD"
+
+    if result.surfaced_unknowns:
+        lines.append("❓ 作業を始める前に、以下の点だけご確認させてください。")
+        lines.append("")
+        for i, q in enumerate(result.surfaced_unknowns, 1):
+            lines.append(f"  {i}. {q}")
+        lines.append("")
+
+    if result.required_human_approvals:
+        lines.append("⚠️ 以下の操作は、実行前にあなたの確認が必要です。")
+        lines.append("")
+        for a in result.required_human_approvals:
+            lines.append(f"  - {a}")
+        lines.append("")
+
+    allowed = [
+        d.action_text for d in result.action_overlay
+        if d.action_text not in result.required_human_approvals
+    ]
+    if allowed:
+        lines.append("✅ 以下は確認なしで進めてよい内容です。")
+        lines.append("")
+        for a in allowed:
+            lines.append(f"  - {a}")
+        lines.append("")
+
+    lines.append("🛡️ 変更していないもの: 上記いずれの操作も、まだ実行されていません")
+    lines.append("（このHarnessは判断のみを行い、実際のファイル操作等は別途あなたの")
+    lines.append("承認を経て行われます）。")
+    lines.append("━" * 32)
+
+    if result.surfaced_unknowns:
+        headline = "ASK"
+    elif result.required_human_approvals:
+        headline = "APPROVAL_REQUIRED"
+    else:
+        headline = "DONE"
+
+    return "\n".join(lines), headline
+
+
+_EXIT_CODES = {"DONE": 0, "ASK": 1, "APPROVAL_REQUIRED": 2, "HELD": 3}
+
+
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="ume-harness",
+        description="日本語の曖昧な依頼を、Authority Overlay + Clarification Impact Contractで判定するCLI（v0・Claude Sonnet 5対応）。",
+    )
+    parser.add_argument("request", nargs="?", help="日本語の依頼文（例: 'この資料まとめといて'）")
+    parser.add_argument("--request", dest="request_flag", help="依頼文（位置引数の代わりに使用可）")
+    parser.add_argument("--context", default="", help="作業フォルダ・既知ファイル一覧等の補足情報")
+    parser.add_argument(
+        "--llm-output-file", default=None,
+        help="claude CLI呼び出しの代わりに、既存のLLM出力JSONファイルを読み込む（オフラインテスト用・API呼び出しなし）",
+    )
+    parser.add_argument("--json", action="store_true", help="自然語レポートに加え、内部状態をJSONでも出力する（デバッグ用）")
+    args = parser.parse_args(argv)
+
+    raw_request = args.request_flag or args.request
+    if not raw_request and not args.llm_output_file:
+        parser.error("依頼文を指定してください（位置引数または --request）。または --llm-output-file でオフライン入力を指定してください。")
+
+    if args.llm_output_file:
+        with open(args.llm_output_file, encoding="utf-8") as f:
+            llm_output = json.load(f)
+    else:
+        try:
+            llm_output = call_claude_for_interpretation(raw_request, args.context)
+        except Exception as e:
+            print(f"❌ 依頼の解釈に失敗しました: {e}", file=sys.stderr)
+            return _EXIT_CODES["HELD"]
+
+    # Tierは常にTIER_NORMAL固定（P0-3: 利用者に選ばせない）。
+    result = hla.normalize(llm_output, tier=tp.Tier.TIER_NORMAL, workspace_context=args.context)
+    report, headline = render_report(result)
+    print(report)
+
+    if args.json:
+        print()
+        print(json.dumps({
+            "headline_state": headline,
+            "work_type": result.work_type,
+            "classification_status": result.classification_status,
+            "required_human_approvals": result.required_human_approvals,
+            "surfaced_unknowns": result.surfaced_unknowns,
+            "pruned_unknowns": result.pruned_unknowns,
+            "clarification_blocked": result.clarification_blocked,
+        }, ensure_ascii=False, indent=2))
+
+    return _EXIT_CODES[headline]
+
+
+if __name__ == "__main__":
+    sys.exit(main())

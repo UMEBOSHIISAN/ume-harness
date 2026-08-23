@@ -1,0 +1,33 @@
+ume-harness — Provenance Notice
+
+本パッケージ（Portable Core: contracts/ + runtime/、Japanese Human Layer:
+ux/japanese-human-layer/）は、個人運用中のAIエージェント自動化基盤から、
+事業固有ロジック（WooCommerce/X API連携・特定production hostの認証情報・
+crontab/pm2固有設定等）を除去した上で、汎用の意思決定ロジックのみを
+再実装・抽出したものです。
+
+## 由来
+
+- `contracts/authority_contract.md` / `contracts/tool_policy.md`: 個人環境の
+  Authority Contract（5 Tier x 5 SideEffect決定モデル）を一般化。
+- `runtime/tool_policy.py`: 個人実装（unified_tool_classifier.py等）の分類ロジックを
+  参考に、事業固有パターンを除去して再実装。
+- `runtime/decision_state.py`: 個人実装（canonical_decision_writer.py）から
+  Claude Code固有のproject-memoryパス依存を除去して再実装。
+- `runtime/stop_adapter.py`: 個人実装（unified_stop_router.py）から、
+  個人環境固有の7段hook直列実行等を除去し、5条件の受入判定のみを抽出。
+- `runtime/human_layer_adapter.py` (Clarification Impact Contract v0 Rev.2):
+  本パッケージのために新規設計・実装（design/clarification_impact_contract_v0.md参照）。
+  co（Codex・GPT系）による2ラウンドの独立レビューを経て確定。
+- `ux/japanese-human-layer/`: 日本人非エンジニア向けUXレイヤーとして新規設計。
+
+## 第三者コードの混入なし
+
+本パッケージはPython標準ライブラリのみに依存する（`dataclasses`, `enum`, `json`,
+`os`, `tempfile`, `time`, `typing`）。サードパーティライブラリ・ソースコードの
+コピーは含まれない。
+
+## 監修・検証プロセス
+
+Structural Gate（単体テスト全通）および Semantic Gate（実LLM Sampling Contract）による
+実測検証を実施済み。詳細は `MANIFEST.md`・`SUPPORT_MATRIX.md`・`tests/case1_v2_sampling_contract.md` を参照。

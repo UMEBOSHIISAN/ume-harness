@@ -1,0 +1,16 @@
+{
+  "_status": "PreToolUse: IMPLEMENTED (pretooluse_hook.py, tested — see tests/test_claude_code_adapter.py). Stop hook: NOT_IMPLEMENTABLE, see README.md for why. Merge only the PreToolUse block below into your own ~/.claude/settings.json manually — do not run an installer script.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 <PACKAGE_ABSOLUTE_PATH>/adapters/claude-code/pretooluse_hook.py"
+          }
+        ]
+      }
+    ]
+  }
+}
