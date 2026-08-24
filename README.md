@@ -1,22 +1,29 @@
 # Umeboshi Harness (Portable Edition)
 
-> **Deterministic Decision / Authority Core + Claude Code Bounded-Execution Adapter**
+> **Portable Local-Execution Policy / Host Adapter + Umeko Presentation (Translation Konjac)**
 > 日本人の非エンジニアが自然な日本語で安全に仕事を任せられる、オープンソースの
 > 意思決定ロジック基盤および作業ツリー実行権限制御アダプタ。
 
-## 📌 現在のステータス（v0.1.0・2026-08-23）
+## 📌 現在のステータス（v0.1.0・2026-08-24 final-freeze bytes）
 
 - **製品の位置づけ**:
-  本パッケージは「決定論的意思決定・権限管理コア」および「Claude Code 向け作業ツリー実行境界アダプタ（Lease Gate）」です。
+  本パッケージは、local `tool_policy` / Lease Gate を提供する **HOST_ADAPTER** と、
+  技術イベントを平易な日本語へ変換する Presentation adapter です。canonical な外部
+  Action Authority / FrozenAction は所有せず、外部 Authority は Mothership が所有します。
   **※ 完全自動で外部操作まで完結する Turnkey 秘書アプリや、無人自律実行エンジンではありません。**
 - **対応モデル**: **Claude Sonnet 5 のみ。** 詳細・実測数値は `SUPPORT_MATRIX.md`。
   Gemma 4:12bは現時点で未対応（P1別チケット）。
 - **単一CLI入口**: `ume-harness`（`bin/ume-harness`）。日本語の依頼文を渡すと、
-  Authority Overlay + Clarification Impact Contractの判定結果を自然語で表示する。
+  local Authority Overlay + Clarification Impact Contract の判定結果と、
+  Presentation-only Translation Konjac の説明を自然語で表示する。
 - **Claude Code 境界保護アダプタ**: `adapters/claude-code/pretooluse_hook.py` + `lease_gate_runner.py`。
   Active Lease 下の作業ツリー境界保護（Read/Write スコープ逸脱遮断）、Bash 合成攻撃防御、
-  `.ume-harness/**` コントロールプレーン保護を単体テスト済み（44/44 PASS）。
-- **インストーラ・ライフサイクル**: `scripts/install.sh`, `scripts/health_check.py`, `scripts/uninstall.sh` 実装・検証済み。
+  `.ume-harness/**` コントロールプレーン保護を単体テスト済み（51/51 PASS）。
+- **インストーラ・ライフサイクル**: isolated HOME/PREFIXで
+  install → setup → offline use → byte verify → disconnect → uninstall と最終状態を機械検証済み。
+- **Source authority**: `ume-harness-engineering`だけがcanonical source。
+  public `ume-harness`は明示closureから生成するrelease mirrorであり、public側の手修正や
+  public→engineering逆同期はサポートしない。
 
 ---
 
@@ -44,7 +51,7 @@
   - シェルインジェクションおよびコマンド合成攻撃（`;`, `&&`, `||`, `$()`, リダイレクト等）
   - `<worktree>/.ume-harness/**` コントロールプレーン領域の改ざん
   - 非承認の外部副作用（`git push`, `ssh` 等）および破壊的操作（`rm -rf` 等）
-  - 15-Artifact Runtime Closure の完全性改ざん検知
+  - 39-file explicit install closure のactual bytesとfrozen release identityの一致検証
 
 ---
 
@@ -59,6 +66,8 @@ cd ume-harness
 ```
 
 デフォルトで `~/.local`（実行ファイル: `~/.local/bin/ume-harness`）にインストールされます。
+上記public repositoryは利用者向けgenerated release mirrorです。変更の正本は
+`ume-harness-engineering`であり、public mirrorを編集元にはしません。
 
 #### PATH の確認
 インストール後に `ume-harness` コマンドが見つからない場合は、以下を実行してください：
@@ -73,7 +82,22 @@ export PATH="$HOME/.local/bin:$PATH"
 
 `install.sh` は `ume-harness` 本体と標準アダプタ資産を配備しますが、**既存の `~/.claude/settings.json` やフックを自動変更・上書きすることはありません**。
 
-Claude Code と連携させる場合は、[`adapters/claude-code/README.md`](adapters/claude-code/README.md) を参照して手動で設定を行ってください。
+Claude Codeとの接続:
+
+```bash
+ume-harness setup --yes
+```
+
+切断:
+
+```bash
+ume-harness setup --disconnect
+```
+
+setup/disconnectが所有するのは、`PreToolUse` / `PermissionRequest` /
+`PostToolUseFailure`にsetup自身が生成する3本のcanonical commandとの完全一致だけです。
+他event、他matcher、他hook、および単に`ume-harness`という文字列を含むユーザーhookには
+触れません。切断時にsettingsを安全に解析・再検証できない場合はfail closedになります。
 
 ---
 
@@ -103,22 +127,28 @@ python3 ~/.local/lib/ume-harness/v0.1.0/scripts/health_check.py
 python3 ./scripts/health_check.py
 ```
 
-アンインストール（リポジトリ内から実行）:
+アンインストール（インストール済みreleaseから実行）:
 ```bash
-./scripts/uninstall.sh
+~/.local/lib/ume-harness/v0.1.0/scripts/uninstall.sh --yes
 ```
+
+uninstallはpayload削除前にownership-scoped disconnectを実行します。settingsを解析できない、
+またはowned hookが残る場合は、インストールを削除せず停止します。
 
 ---
 
 ### 5. テスト実行
 
 ```bash
-python3 tests/test_portable_core.py          # 39 passed
+python3 tests/test_portable_core.py          # 40 passed
 python3 tests/test_human_layer_adapter.py    # 42 passed
 python3 tests/test_cli.py                    # 13 passed（LLM不使用）
-python3 tests/test_claude_code_adapter.py    # 44 passed（LLM不使用）
-pytest tests/ ux/japanese-human-layer/tests/ # 110 passed
+python3 tests/test_claude_code_adapter.py    # 51 passed（LLM不使用）
+pytest -q tests ux/japanese-human-layer/tests # 244 passed, 7 subtests passed
 ```
+
+`tests/test_release_lifecycle.py`はisolated HOME/PREFIXで最終シーケンスを実行し、
+payload/CLI/owned hooksの消滅、無関係Claude設定の保持、user stateの保持をassertします。
 
 ### さらに詳しく
 
@@ -166,34 +196,34 @@ candidate_action_omission (KNOWN_RESIDUAL_SEMANTIC_RISK):
 
 ## 📁 パッケージ構成
 
-構成の正本は`MANIFEST.md`（実findとの完全一致を`test_portable_core.py`が機械検証）。
+release構成の機械正本は`package_manifest.json`の明示`release.payload`です。
+`MANIFEST.md`はその64-file closureを同じ順序で表示し、ambient/untracked filesは参照しません。
 
 ```text
 ume-harness/
 ├── README.md / LICENSE / NOTICE / VERSION / MANIFEST.md / package_manifest.json
+├── domain_descriptor.json / RELEASE_IDENTITY.json（release staging時に生成）
 ├── PHASE4_HOLD.md / QUARANTINE_NOTICE.md / SUPPORT_MATRIX.md
 │
 ├── bin/ume-harness                     # ★単一CLI入口（実装済み・テスト済み）
 │
 ├── contracts/                          # 規約・入出力契約（4本）
-├── runtime/                            # 決定ロジックライブラリ（tool_policy.py /
-│                                         human_layer_adapter.py / decision_state.py /
-│                                         stop_adapter.py）
+├── runtime/                            # 決定ロジック + hook setup/disconnect（11本）
 ├── schemas/                            # LLM出力contractのJSON Schema
 ├── examples/                           # 実測データに基づく使用例
 ├── design/                             # Rev.2設計書（FROZEN）
 │
 ├── ux/japanese-human-layer/            # 日本語UXプロンプト＋fixture
 │
-├── adapters/claude-code/               # PreToolUse hook（実装済み）+ Stop hook説明
-│                                         （NOT_IMPLEMENTABLE理由の明記）
-├── scripts/                            # インストール・診断・アンインストール（install/health_check/uninstall）
+├── adapters/claude-code/               # 3 hooks + Lease Gate + 設定参照資産（6本）
+├── scripts/                            # install/health/uninstall + one-way release gate（4本）
 │
-└── tests/                              # 単体テスト5本 + Case1 v2契約2本（FROZEN）+
-                                          隔離済み記録1本 + evidence/（実測証跡・INDEX.md参照）
+└── tests/                              # テスト9本 + Case1 v2契約2本 + 隔離済み記録1本
 ```
 
-**受入検証は `tests/case1_v2_sampling_contract.md`（Sampling Contract Rev.2: Claude Sonnet 5 pooled 0% prunable present / 0/6 false negatives）および単体・結合テスト全通により検証済み。**
+release promotionはclean canonical checkout → explicit closure → deterministic staging →
+digest generation → tests → public mirror read-only comparisonの一方向だけです。
+`scripts/release_promote.py`はpublish/push/merge機能を持たず、公開には別途human approvalが必要です。
 
 ---
 

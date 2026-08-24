@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # install.sh — Fail-Safe Portable Harness Prefix Installer
 #
-# Installs the 30-file Generic Install Payload into:
+# Installs the explicit Generic Install Payload into:
 #   ${PREFIX}/lib/ume-harness/v0.1.0/
 #   ${PREFIX}/bin/ume-harness
 #
@@ -60,6 +60,18 @@ fi
 LIB_DIR="${PREFIX}/lib/ume-harness/${VERSION}"
 BIN_DIR="${PREFIX}/bin"
 STAGING_DIR="${PREFIX}/lib/ume-harness/.staging_$$"
+OWNERSHIP_HELPER="${SOURCE_DIR}/runtime/hook_setup_service.py"
+
+emit_cli_wrapper() {
+    python3 "${OWNERSHIP_HELPER}" emit-cli-wrapper --pkg-root "${LIB_DIR}"
+}
+
+is_owned_cli_wrapper() {
+    local wrapper_path="$1"
+    python3 "${OWNERSHIP_HELPER}" verify-cli-wrapper \
+        --pkg-root "${LIB_DIR}" \
+        --wrapper-path "${wrapper_path}"
+}
 
 echo "=== Umeboshi Portable Harness Installer ==="
 echo "Source:  ${SOURCE_DIR}"
@@ -77,8 +89,8 @@ if [ ! -f "${MANIFEST_FILE}" ]; then
 fi
 
 PAYLOAD_COUNT=$(python3 -c "import json; print(len(json.load(open('${MANIFEST_FILE}'))['install_payload']))")
-if [ "${PAYLOAD_COUNT}" -ne 30 ]; then
-    echo "❌ Manifest Mismatch: package_manifest.json declares ${PAYLOAD_COUNT} payload files (expected 30)." >&2
+if [ "${PAYLOAD_COUNT}" -le 0 ]; then
+    echo "❌ Manifest Mismatch: package_manifest.json contains no install_payload files." >&2
     exit 1
 fi
 
@@ -93,7 +105,12 @@ for rel in "${PAYLOAD_LIST[@]}"; do
         exit 1
     fi
 done
-echo "All 30 source payload files verified."
+echo "All ${PAYLOAD_COUNT} source payload files verified."
+
+echo "-> Comparing source bytes with the frozen release identity..."
+python3 "${SOURCE_DIR}/scripts/health_check.py" \
+    --installed-dir "${SOURCE_DIR}" \
+    --identity-only
 
 if [ "${DRY_RUN}" = true ]; then
     echo "Dry run complete. No changes made."
@@ -106,9 +123,13 @@ if [ -d "${LIB_DIR}" ] && [ "${FORCE}" = false ]; then
     exit 1
 fi
 
+if [ -L "${BIN_DIR}/ume-harness" ] || { [ -e "${BIN_DIR}/ume-harness" ] && [ ! -f "${BIN_DIR}/ume-harness" ]; }; then
+    echo "❌ Collision: Unsafe non-regular path exists at ${BIN_DIR}/ume-harness. Refusing to follow or replace it." >&2
+    exit 1
+fi
+
 if [ -e "${BIN_DIR}/ume-harness" ] && [ "${FORCE}" = false ]; then
-    # Check if existing CLI is owned by ume-harness
-    if ! grep -q "ume-harness" "${BIN_DIR}/ume-harness" 2>/dev/null; then
+    if ! is_owned_cli_wrapper "${BIN_DIR}/ume-harness"; then
         echo "❌ Collision: Unrelated file exists at ${BIN_DIR}/ume-harness. Use --force to overwrite." >&2
         exit 1
     fi
@@ -130,29 +151,13 @@ for rel in "${PAYLOAD_LIST[@]}"; do
     cp "${SOURCE_DIR}/${rel}" "${dest}"
 done
 
-# Copy scripts/health_check.py as diagnostic utility into installed lib
-mkdir -p "${STAGING_DIR}/scripts"
-cp "${SOURCE_DIR}/scripts/health_check.py" "${STAGING_DIR}/scripts/health_check.py"
-chmod +x "${STAGING_DIR}/scripts/health_check.py"
-
-# Include standard domain canary
-if [ -f "${SOURCE_DIR}/domain_descriptor.json" ]; then
-    cp "${SOURCE_DIR}/domain_descriptor.json" "${STAGING_DIR}/domain_descriptor.json"
-else
-    # Create standard isolated canary descriptor
-    cat << 'CANARY_EOF' > "${STAGING_DIR}/domain_descriptor.json"
-{
-  "domain_id": "ume-harness",
-  "version": "0.1.0",
-  "environment": "portable",
-  "root_identity_model": "sha256_canonical_json_v1"
-}
-CANARY_EOF
-fi
-
 chmod +x "${STAGING_DIR}/bin/ume-harness"
 chmod +x "${STAGING_DIR}/adapters/claude-code/lease_gate_runner.py"
 chmod +x "${STAGING_DIR}/adapters/claude-code/pretooluse_hook.py"
+chmod +x "${STAGING_DIR}/adapters/claude-code/permission_request_hook.py"
+chmod +x "${STAGING_DIR}/adapters/claude-code/posttooluse_failure_hook.py"
+chmod +x "${STAGING_DIR}/scripts/health_check.py"
+chmod +x "${STAGING_DIR}/scripts/uninstall.sh"
 
 # 5. Atomic Promotion to Version Directory
 echo "-> Promoting staging to ${LIB_DIR}..."
@@ -165,11 +170,7 @@ mv "${STAGING_DIR}" "${LIB_DIR}"
 # 6. Install CLI entrypoint
 echo "-> Installing CLI to ${BIN_DIR}/ume-harness..."
 mkdir -p "${BIN_DIR}"
-cat << WRAPPER_EOF > "${BIN_DIR}/ume-harness"
-#!/usr/bin/env bash
-# ume-harness launcher wrapper
-exec python3 "${LIB_DIR}/bin/ume-harness" "\$@"
-WRAPPER_EOF
+emit_cli_wrapper > "${BIN_DIR}/ume-harness"
 chmod 755 "${BIN_DIR}/ume-harness"
 
 # 7. Run Installed Health Check
@@ -184,4 +185,5 @@ echo "Package library:   ${LIB_DIR}"
 echo ""
 echo "Notice: Standard Claude Code adapter assets are available at:"
 echo "  ${LIB_DIR}/adapters/claude-code/"
-echo "(No host configurations were altered. Manual settings merge is required for integration)."
+echo "Package installation did not alter host settings."
+echo "Connect explicitly with: ${BIN_DIR}/ume-harness setup"

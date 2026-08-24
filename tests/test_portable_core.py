@@ -10,6 +10,7 @@ japanese-human-layer の実LLM behavioral test（Phase 3）はここに含めな
 （fixture整合性テストと実LLM挙動テストを混同しない、という監査結果を反映）。
 """
 
+import json
 import os
 import re
 import subprocess
@@ -244,46 +245,36 @@ def test_stop_adapter_missing_condition_blocks():
     check("unmet_points() reports both issues", len(c.unmet_points()) == 2, f"got {c.unmet_points()}")
 
 
-def test_manifest_matches_real_find():
-    print("\n[manifest] MANIFEST.md の宣言ファイル一覧が配布物実findと厳密一致する（drift防止・2026-08-20強化）")
+def test_manifest_matches_explicit_release_closure():
+    print("\n[manifest] MANIFEST.md は明示release closureと一致し、ambient filesystemに依存しない")
     pkg_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
-    # 配布物surfaceの定義: __pycache__ / logs / tests/evidence(実測raw証跡) /
-    # tests/for_codex(dispatch scratch)は「配布物」ではないため対象外とする
-    # （evidence/for_codexはgit履歴・INDEXから参照する形にする。tests/evidence/INDEX.md参照）。
-    # この除外規則自体は固定・機械的であり、個別ファイルの手集計は行わない。
-    excluded_prefixes = (".git/", "logs/", "tests/evidence/", "tests/for_codex/")
-    result = subprocess.run(
-        ["find", pkg_root, "-type", "f"], capture_output=True, text=True, check=True
-    )
-    real_files = set()
-    for line in result.stdout.splitlines():
-        rel = os.path.relpath(line, pkg_root)
-        if any(part.startswith(".") for part in rel.split("/")):
-            continue
-        if "__pycache__" in rel:
-            continue
-        if rel.startswith(excluded_prefixes):
-            continue
-        real_files.add(rel)
+    with open(os.path.join(pkg_root, "package_manifest.json"), encoding="utf-8") as f:
+        package_manifest = json.load(f)
+    release_payload = package_manifest["release"]["payload"]
+    assert len(release_payload) == len(set(release_payload)), "release.payload contains duplicates"
 
     manifest_path = os.path.join(pkg_root, "MANIFEST.md")
     with open(manifest_path, "r", encoding="utf-8") as f:
         manifest_text = f.read()
     m = re.search(r"```\n(.*?)\n```", manifest_text, re.DOTALL)
-    declared_files = set(line.strip() for line in (m.group(1).splitlines() if m else []) if line.strip())
-
-    missing_from_manifest = real_files - declared_files
-    phantom_in_manifest = declared_files - real_files
+    declared_files = [line.strip() for line in (m.group(1).splitlines() if m else []) if line.strip()]
     check(
-        "MANIFEST.md の宣言ファイルが実findと完全一致（欠落なし・幽霊エントリなし）",
-        not missing_from_manifest and not phantom_in_manifest,
-        f"missing_from_manifest={sorted(missing_from_manifest)} phantom_in_manifest={sorted(phantom_in_manifest)}",
+        "MANIFEST.md の宣言ファイルが package_manifest release.payload と順序を含め一致",
+        declared_files == release_payload,
+        f"manifest_only={sorted(set(declared_files) - set(release_payload))} "
+        f"closure_only={sorted(set(release_payload) - set(declared_files))}",
     )
+    generated = package_manifest["release"]["generated_identity_file"]
+    missing_source_files = [
+        rel for rel in release_payload
+        if rel != generated and not os.path.isfile(os.path.join(pkg_root, rel))
+    ]
     check(
-        f"real distributable file count = {len(real_files)}",
-        True,
-        f"real={len(real_files)}",
+        "明示closureのsource filesがすべて存在",
+        not missing_source_files,
+        f"missing={missing_source_files}",
     )
+    check("generated identityがclosure内に1件だけ存在", release_payload.count(generated) == 1)
 
 
 def test_japanese_human_layer_fixture_consistency():
@@ -316,7 +307,7 @@ def main():
     test_decision_state_record_and_read_roundtrip()
     test_stop_adapter_all_conditions_met()
     test_stop_adapter_missing_condition_blocks()
-    test_manifest_matches_real_find()
+    test_manifest_matches_explicit_release_closure()
     test_japanese_human_layer_fixture_consistency()
 
     print(f"\n=== {PASS} passed, {FAIL} failed ===")

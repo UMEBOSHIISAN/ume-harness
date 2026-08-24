@@ -17,10 +17,12 @@ import sys
 
 _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _ADAPTER_DIR = os.path.join(_PKG_ROOT, "adapters", "claude-code")
-if _ADAPTER_DIR not in sys.path:
-    sys.path.insert(0, _ADAPTER_DIR)
+_RUNTIME_DIR = os.path.join(_PKG_ROOT, "runtime")
+if _RUNTIME_DIR not in sys.path:
+    sys.path.insert(0, _RUNTIME_DIR)
 
 import lease_gate_runner as runner  # noqa: E402
+import translation_konjac as konjac  # noqa: E402
 
 
 def evaluate_invocation(
@@ -43,6 +45,24 @@ def main() -> int:
         sys.stderr.write(f"[ume-harness pretooluse_hook] invalid JSON input: {e}\n")
         return 2
 
+    # 1. Presentation-only Translation Konjac rendering.
+    # This path never decides permission; the canonical gate below is evaluated independently.
+    try:
+        tool_name = data.get("tool_name", "")
+        tool_input = data.get("tool_input", {})
+        cwd = data.get("cwd", os.getcwd())
+        permission_mode = data.get("permission_mode", "auto")
+        
+        trans_res = konjac.translate_tool_event(tool_name, tool_input, cwd)
+        banner = konjac.format_user_banner(trans_res, permission_context=(permission_mode == "ask"))
+        if banner:
+            sys.stderr.write(banner)
+    except Exception:
+        sys.stderr.write(
+            "  ↳ 🇯🇵 ⚠️ この操作の日本語解説を生成できませんでした（影響: 未判定・技術表示をご確認ください）\n"
+        )
+
+    # 2. Canonical Safety Gate Evaluation
     exit_code, error_msg = runner.evaluate_invocation(data)
     if error_msg:
         sys.stderr.write(error_msg)

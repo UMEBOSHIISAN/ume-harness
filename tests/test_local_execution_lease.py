@@ -54,7 +54,7 @@ def _policy(
 def _context() -> RuntimeContext:
     return RuntimeContext(
         repository="UMEBOSHIISAN/ume-harness",
-        worktree_realpath="/tmp/dummy-worktree/local-execution-lease-v0",
+        worktree_realpath="/Users/umeboshi/.ume-harness/worktrees/local-execution-lease-v0",
         branch="task/local-execution-lease-v0",
         starting_head="a" * 40,
         baseline_status_digest=_sha256("clean-status"),

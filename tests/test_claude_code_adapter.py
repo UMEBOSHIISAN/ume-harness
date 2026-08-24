@@ -8,6 +8,9 @@
    - Lease 管理外の Edit/Write: 従来の Portable Core 判定へフォールバック
 """
 
+from __future__ import annotations
+
+import io
 import json
 import os
 import subprocess
@@ -413,6 +416,62 @@ def test_unmanaged_read_scope_allowed() -> None:
         check("Unmanaged cat -> exit 0", c2 == 0, f"got {c2}")
 
 
+def test_translation_failure_does_not_skip_gate() -> None:
+    print("\n[Presentation Boundary] Konjac failure does not skip canonical gate")
+    original_translate = hook.konjac.translate_tool_event
+    original_evaluate = hook.runner.evaluate_invocation
+    original_stdin = sys.stdin
+    calls = []
+
+    def fail_translation(*_args, **_kwargs):
+        raise RuntimeError("synthetic presentation failure")
+
+    def fake_evaluate(data):
+        calls.append(data)
+        return 0, None
+
+    try:
+        hook.konjac.translate_tool_event = fail_translation
+        hook.runner.evaluate_invocation = fake_evaluate
+        sys.stdin = io.StringIO(json.dumps({"tool_name": "Read", "tool_input": {}}))
+        result = hook.main()
+    finally:
+        hook.konjac.translate_tool_event = original_translate
+        hook.runner.evaluate_invocation = original_evaluate
+        sys.stdin = original_stdin
+
+    check("Konjac failure keeps hook result", result == 0, f"got {result}")
+    check("canonical gate still evaluated", len(calls) == 1, f"calls={len(calls)}")
+
+
+def test_permission_request_hook() -> None:
+    print("\n[Permission Request Hook] PermissionRequest で日本語バナーが出力される")
+    hook_path = os.path.join(_ADAPTER_DIR, "permission_request_hook.py")
+    payload = {
+        "hook_event_name": "PermissionRequest",
+        "tool_name": "Bash",
+        "tool_input": {"command": "git push origin feature-x"},
+    }
+    proc = subprocess.run([sys.executable, hook_path], input=json.dumps(payload), capture_output=True, text=True)
+    check("PermissionRequest hook -> exit 0", proc.returncode == 0)
+    check("PermissionRequest outputs structured card", "ここからPCの外へ出ます" in proc.stderr and "外部送信" in proc.stderr)
+
+
+def test_posttooluse_failure_hook() -> None:
+    print("\n[PostToolUse Failure Hook] ツール実行失敗時に事実ベースの日本語解説が出力される（ネイティブCC形式）")
+    hook_path = os.path.join(_ADAPTER_DIR, "posttooluse_failure_hook.py")
+    payload = {
+        "hook_event_name": "PostToolUseFailure",
+        "error": "Exit code 127\n/bin/sh: command not found: unknown_bin",
+        "is_interrupt": False,
+        "duration_ms": 50,
+    }
+    proc = subprocess.run([sys.executable, hook_path], input=json.dumps(payload), capture_output=True, text=True)
+    check("PostToolUseFailure hook -> exit 0", proc.returncode == 0)
+    check("PostToolUseFailure parses native exit code", "終了コード: 127" in proc.stderr)
+    check("PostToolUseFailure outputs truthful status", "途中で失敗しました" in proc.stderr and "変更状態を確認" in proc.stderr)
+
+
 def main() -> None:
     test_read_tool_allowed()
     test_edit_tool_allowed_tier_normal_unmanaged()
@@ -431,6 +490,9 @@ def main() -> None:
     test_control_plane_modification_denied()
     test_active_lease_read_scope_escape_denied()
     test_unmanaged_read_scope_allowed()
+    test_translation_failure_does_not_skip_gate()
+    test_permission_request_hook()
+    test_posttooluse_failure_hook()
 
     print(f"\n=== {PASS} passed, {FAIL} failed ===")
     sys.exit(1 if FAIL else 0)

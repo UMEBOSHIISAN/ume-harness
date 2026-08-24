@@ -147,7 +147,66 @@ def render_report(result: hla.NormalizedInterpretation) -> tuple[str, str]:
 _EXIT_CODES = {"DONE": 0, "ASK": 1, "APPROVAL_REQUIRED": 2, "HELD": 3}
 
 
+import hook_setup_service as hss  # noqa: E402
+
+
+def handle_setup_command(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(
+        prog="ume-harness setup",
+        description="Claude Code の日本語通訳（翻訳こんにゃく）フックを安全に接続・切断します。",
+    )
+    parser.add_argument("--yes", "-y", action="store_true", help="確認プロンプトをスキップして自動承認する")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--preview", action="store_true", help="設定のプレビューのみ表示し、変更は行わない")
+    mode.add_argument("--disconnect", action="store_true", help="ume-harness が所有する3本のフックだけを切断する")
+    parser.add_argument("--settings-path", default=None, help="対象の settings.json パス（テスト用）")
+    args = parser.parse_args(argv)
+
+    target_path = args.settings_path or hss.get_default_settings_path()
+
+    if args.disconnect:
+        ok, msg = hss.disconnect_hooks_from_settings(_PKG_ROOT, target_path)
+        if ok:
+            print(f"✅ {msg}")
+            return 0
+        else:
+            print(f"❌ {msg}", file=sys.stderr)
+            return 1
+
+    hook_paths = hss.get_adapter_hook_paths(_PKG_ROOT)
+    preview_text = hss.generate_preview(target_path, hook_paths)
+    print(preview_text)
+
+    if args.preview:
+        return 0
+
+    if not args.yes:
+        try:
+            choice = input("\nこの設定を Claude Code に接続しますか？ [y/N]: ").strip().lower()
+            if choice not in ("y", "yes"):
+                print("キャンセルしました。設定は変更されていません。")
+                return 0
+        except (KeyboardInterrupt, EOFError):
+            print("\nキャンセルしました。")
+            return 0
+
+    ok, msg = hss.install_hooks_to_settings(_PKG_ROOT, target_path)
+    if ok:
+        print(f"\n✅ {msg}")
+        print("🎉 これで Claude Code を起動すると、自動的に日本語通訳が常駐します！")
+        return 0
+    else:
+        print(f"\n❌ {msg}", file=sys.stderr)
+        return 1
+
+
 def main(argv=None) -> int:
+    if argv is None:
+        argv = sys.argv[1:]
+
+    if argv and argv[0] == "setup":
+        return handle_setup_command(argv[1:])
+
     parser = argparse.ArgumentParser(
         prog="ume-harness",
         description="日本語の曖昧な依頼を、Authority Overlay + Clarification Impact Contractで判定するCLI（v0・Claude Sonnet 5対応）。",
@@ -164,7 +223,7 @@ def main(argv=None) -> int:
 
     raw_request = args.request_flag or args.request
     if not raw_request and not args.llm_output_file:
-        parser.error("依頼文を指定してください（位置引数または --request）。または --llm-output-file でオフライン入力を指定してください。")
+        parser.error("依頼文を指定してください（位置引数または --request）。または `ume-harness setup` でフックを設定してください。")
 
     if args.llm_output_file:
         with open(args.llm_output_file, encoding="utf-8") as f:

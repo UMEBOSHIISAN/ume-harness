@@ -1,0 +1,6 @@
+{
+  "domain_id": "ume-harness",
+  "version": "0.1.0",
+  "environment": "portable",
+  "root_identity_model": "sha256-canonical-path-map-v1"
+}

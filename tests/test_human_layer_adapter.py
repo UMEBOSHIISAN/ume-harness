@@ -13,6 +13,8 @@ authority false negativeの再発防止）。
 全てfail-safe（ASKまたはBLOCK）に倒れ、無検証でSUPPRESSへ落ちない。
 """
 
+from __future__ import annotations
+
 import os
 import sys
 

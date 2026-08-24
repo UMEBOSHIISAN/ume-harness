@@ -7,12 +7,15 @@
 #
 # Boundary & Safety Guarantees:
 #   - Removes only ume-harness owned files
+#   - Disconnects only the three exact canonical Claude Code hook commands
 #   - User state (~/.ume-harness/state) is preserved by default
-#   - No Claude Code host configuration is modified or deleted
+#   - Aborts before payload deletion if Claude settings cannot be verified
 set -euo pipefail
 
+SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VERSION="v0.1.0"
 PREFIX="${HOME}/.local"
+SETTINGS_PATH="${HOME}/.claude/settings.json"
 YES=false
 
 usage() {
@@ -20,6 +23,7 @@ usage() {
     echo "Options:"
     echo "  --prefix <DIR>    Installation prefix (default: ~/.local)"
     echo "  --version <VER>   Target version to remove (default: v0.1.0)"
+    echo "  --settings-path <FILE> Claude settings path (default: ~/.claude/settings.json)"
     echo "  -y, --yes         Non-interactive confirmation"
     echo "  -h, --help        Show this help message"
     exit 0
@@ -37,6 +41,10 @@ while [[ $# -gt 0 ]]; do
                 echo "❌ Invalid version format: '$VERSION' (expected vX.Y.Z)" >&2
                 exit 1
             fi
+            shift 2
+            ;;
+        --settings-path)
+            SETTINGS_PATH="$2"
             shift 2
             ;;
         -y|--yes)
@@ -58,6 +66,10 @@ if [ -z "${PREFIX}" ] || [ "${PREFIX}" = "/" ] || [ "${PREFIX}" = "/usr" ] || [ 
     echo "❌ Unsafe or invalid prefix: '${PREFIX}'" >&2
     exit 1
 fi
+if [ -z "${SETTINGS_PATH}" ]; then
+    echo "❌ Invalid empty settings path." >&2
+    exit 1
+fi
 
 LIB_DIR="${PREFIX}/lib/ume-harness/${VERSION}"
 BIN_DIR="${PREFIX}/bin"
@@ -67,10 +79,12 @@ echo "Prefix:    ${PREFIX}"
 echo "Lib Dir:   ${LIB_DIR}"
 echo "Bin Dir:   ${BIN_DIR}"
 echo "Version:   ${VERSION}"
+echo "Settings:  ${SETTINGS_PATH}"
 
+INSTALL_FOUND=true
 if [ ! -d "${LIB_DIR}" ] && [ ! -e "${BIN_DIR}/ume-harness" ]; then
-    echo "⚠️ No installation found at ${LIB_DIR}. Nothing to remove."
-    exit 0
+    INSTALL_FOUND=false
+    echo "⚠️ No payload found at ${LIB_DIR}; checking for dangling owned hooks."
 fi
 
 # 2. Ownership Verification
@@ -90,18 +104,47 @@ if [ "${YES}" = false ]; then
     fi
 fi
 
-# 3. Safe Removal of Owned Payload
-if [ -d "${LIB_DIR}" ]; then
-    echo "-> Removing library payload: ${LIB_DIR}..."
-    rm -rf "${LIB_DIR}"
-    # Remove parent ume-harness directory if empty
-    rmdir "${PREFIX}/lib/ume-harness" 2>/dev/null || true
-    rmdir "${PREFIX}/lib" 2>/dev/null || true
+# 3. Ownership-Scoped Claude Hook Disconnect
+# Trust only the helper shipped beside the uninstaller being executed. The
+# target prefix may contain an older helper with incompatible exit semantics.
+HOOK_HELPER="${SOURCE_DIR}/runtime/hook_setup_service.py"
+if [ ! -f "${HOOK_HELPER}" ]; then
+    echo "❌ Safety Check Failed: hook ownership helper is unavailable; refusing removal." >&2
+    exit 1
+fi
+EXPECTED_OWNERSHIP_PROTOCOL="ume-harness-ownership.v1"
+if ! ACTUAL_OWNERSHIP_PROTOCOL=$(python3 "${HOOK_HELPER}" protocol-version --pkg-root "${LIB_DIR}" 2>/dev/null); then
+    echo "❌ Safety Check Failed: hook ownership helper protocol could not be verified; refusing removal." >&2
+    exit 1
+fi
+if [ "${ACTUAL_OWNERSHIP_PROTOCOL}" != "${EXPECTED_OWNERSHIP_PROTOCOL}" ]; then
+    echo "❌ Safety Check Failed: unsupported hook ownership helper protocol; refusing removal." >&2
+    exit 1
+fi
+
+is_owned_cli_wrapper() {
+    local wrapper_path="$1"
+    python3 "${HOOK_HELPER}" verify-cli-wrapper \
+        --pkg-root "${LIB_DIR}" \
+        --wrapper-path "${wrapper_path}"
+}
+
+echo "-> Disconnecting exact owned Claude Code hooks before removing payload..."
+if ! python3 "${HOOK_HELPER}" disconnect-for-uninstall --pkg-root "${LIB_DIR}" --settings-path "${SETTINGS_PATH}"; then
+    echo "❌ Safety Check Failed: owned hooks could not be proven disconnected. Installation was preserved." >&2
+    exit 1
+fi
+
+if [ "${INSTALL_FOUND}" = false ]; then
+    echo "=== Uninstall Completed Successfully ==="
+    echo "No payload was present; exact owned hook commands were checked and disconnected."
+    exit 0
 fi
 
 # 4. Safe Removal of CLI Entrypoint
-if [ -e "${BIN_DIR}/ume-harness" ]; then
-    if grep -q "ume-harness" "${BIN_DIR}/ume-harness" 2>/dev/null; then
+# Verify with the installed ownership helper before removing its payload.
+if [ -e "${BIN_DIR}/ume-harness" ] || [ -L "${BIN_DIR}/ume-harness" ]; then
+    if is_owned_cli_wrapper "${BIN_DIR}/ume-harness"; then
         echo "-> Removing CLI wrapper: ${BIN_DIR}/ume-harness..."
         rm -f "${BIN_DIR}/ume-harness"
         rmdir "${BIN_DIR}" 2>/dev/null || true
@@ -110,7 +153,16 @@ if [ -e "${BIN_DIR}/ume-harness" ]; then
     fi
 fi
 
+# 5. Safe Removal of Owned Payload
+if [ -d "${LIB_DIR}" ]; then
+    echo "-> Removing library payload: ${LIB_DIR}..."
+    rm -rf "${LIB_DIR}"
+    # Remove parent ume-harness directory if empty
+    rmdir "${PREFIX}/lib/ume-harness" 2>/dev/null || true
+    rmdir "${PREFIX}/lib" 2>/dev/null || true
+fi
+
 echo ""
 echo "=== Uninstall Completed Successfully ==="
 echo "Note: User state directory (~/.ume-harness/state) was preserved."
-echo "No host application settings were modified."
+echo "Only exact ume-harness-owned Claude hook commands were disconnected."

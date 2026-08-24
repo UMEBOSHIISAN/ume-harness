@@ -1,0 +1,261 @@
+{
+  "canonical_repository": "https://github.com/UMEBOSHIISAN/ume-harness-engineering.git",
+  "files": {
+    ".gitignore": {
+      "mode": "100644",
+      "sha256": "dab1aa08438b7d381b4687d1f4c97bc2a53f8f1a33c0737ce16aa5160dbb39a3"
+    },
+    "LICENSE": {
+      "mode": "100644",
+      "sha256": "5d32a46056139d9cabc02d3b4a19686146c017d67be1ac85e9fe3644ad5027bf"
+    },
+    "MANIFEST.md": {
+      "mode": "100644",
+      "sha256": "b2670bbc82613b8ee6c4fa885b62da6fb5373016e07494f47fab6725675519af"
+    },
+    "NOTICE": {
+      "mode": "100644",
+      "sha256": "81d0aac7995cf1c7ca452e871c81fe5b06fc1d0c27f47254be11ef5db3becdbc"
+    },
+    "PHASE4_HOLD.md": {
+      "mode": "100644",
+      "sha256": "1fb2eccce8f719f18bf60edde37be05d9b9b50f569870be7197880dc61afa51e"
+    },
+    "QUARANTINE_NOTICE.md": {
+      "mode": "100644",
+      "sha256": "b1012679b4ebd64431353504955ae8a4fd4eb2971f20a4f4cd6e494f33efe7ee"
+    },
+    "README.md": {
+      "mode": "100644",
+      "sha256": "c3d3c868b635fe5249bef02eafff90c8698cf571b8e992ac103e6deb75e3cdc3"
+    },
+    "SUPPORT_MATRIX.md": {
+      "mode": "100644",
+      "sha256": "7f64d6ddaf555d10695ab22219d2e93e1918c0f01283e25a1cb61bea229fa500"
+    },
+    "VERSION": {
+      "mode": "100644",
+      "sha256": "e9dd8507f4bf0c6f42458e41aea833ad0bd3f6127272335eee9bf4d58541ed67"
+    },
+    "adapters/claude-code/README.md": {
+      "mode": "100644",
+      "sha256": "ba6b287d7b6a748c20dc22f22b79f3c351aec15b5f8e4206b4ff23406df305f6"
+    },
+    "adapters/claude-code/lease_gate_runner.py": {
+      "mode": "100755",
+      "sha256": "cc4ef2166a99972dd4bf0f4221fb8edccef062fcb30020aaba080ddb97cfea5e"
+    },
+    "adapters/claude-code/permission_request_hook.py": {
+      "mode": "100755",
+      "sha256": "b053a31dbc92d67ac0b0bafe44b72ac636449f1f33d75ddf5b0ec081e582b4c4"
+    },
+    "adapters/claude-code/posttooluse_failure_hook.py": {
+      "mode": "100755",
+      "sha256": "e1c310282cc61fdabb1a970eebb0de8eff48b6b6f03ef56fa3eb6324d8a59cbf"
+    },
+    "adapters/claude-code/pretooluse_hook.py": {
+      "mode": "100755",
+      "sha256": "c56ecd1505691500ed5cb0d9b56d3e4d0222e137958dae577f5c385a8379556d"
+    },
+    "adapters/claude-code/settings.json.fragment": {
+      "mode": "100644",
+      "sha256": "8a6ec596f6620970b0946502b44594a3a530122e396cb803df6fd9875cf5d313"
+    },
+    "bin/ume-harness": {
+      "mode": "100755",
+      "sha256": "a0d2832922b75c2eeae82e0fe7084945cff2b8059362b4387a9ba02e16908471"
+    },
+    "common-language/packs/ja-JP/p0_concepts.json": {
+      "mode": "100644",
+      "sha256": "8ed95cf2dbdf5d5babedd5842c214979e00e50babf18d3fbab3516f9487fd2e1"
+    },
+    "common-language/schema/concept_pack.schema.json": {
+      "mode": "100644",
+      "sha256": "488f22ce68840918fa203bace11eb8e65e91d946f02f332059a8e512263a9ad8"
+    },
+    "contracts/authority_contract.md": {
+      "mode": "100644",
+      "sha256": "eef014f4d33ffb61eb11c6889e44baa5299be3b81efa92a3b9b7e1195800fa0e"
+    },
+    "contracts/autonomous_stop.md": {
+      "mode": "100644",
+      "sha256": "fbe882e6a128dff01783aa387317e47574441f8bb366ed2c4059801823ddc67c"
+    },
+    "contracts/task_intake.md": {
+      "mode": "100644",
+      "sha256": "45141b29e6edc1c29db7e6cedb80c090e02799690006ed298c9bb6ecae8163f9"
+    },
+    "contracts/tool_policy.md": {
+      "mode": "100644",
+      "sha256": "61283a98bc9b1aac52736be36d6b959dcbeb187df24b6f217d742415f039c97f"
+    },
+    "design/clarification_impact_contract_v0.md": {
+      "mode": "100644",
+      "sha256": "8a1faaf3ad101b99f3afae28c2b5fe2f6d1d41e3be9c7371adcccec2cf02e04c"
+    },
+    "domain_descriptor.json": {
+      "mode": "100644",
+      "sha256": "4e2146b4efb1548b8402275afd656a2e62d075653663ab0261ba4c038aaeea1c"
+    },
+    "examples/basic_usage.md": {
+      "mode": "100644",
+      "sha256": "c72c9733282e35a5fa1767b5ac662e947ebe3e98896dab48faeb44e9475f692f"
+    },
+    "package_manifest.json": {
+      "mode": "100644",
+      "sha256": "5d4f58c027195f4fd88c9441ea7bf719b231ddd86566d8efd34d7984cbf793d1"
+    },
+    "runtime/activation_updater.py": {
+      "mode": "100644",
+      "sha256": "424a71ddcfd1ab428cdf46d9525229bd0531789174586987dfbc6c707b15d812"
+    },
+    "runtime/common_language_pack.py": {
+      "mode": "100644",
+      "sha256": "1c02479cad12fe3067435e4c577c42508956ae1ea25b7281d544c60ae19a8abd"
+    },
+    "runtime/decision_state.py": {
+      "mode": "100644",
+      "sha256": "ab849e2ecd408f97536bc46e14beaaf3755351bba968656f65718bf59b580ddc"
+    },
+    "runtime/hook_setup_service.py": {
+      "mode": "100644",
+      "sha256": "9d8eb438a3122fd36293baab340d8d24187ba63501fca8906a63579d42953cbf"
+    },
+    "runtime/human_layer_adapter.py": {
+      "mode": "100644",
+      "sha256": "3e5f998b8637b11f7910a2ed8ff2a73b40ecdc1c31539bf7c48c16bb951d2606"
+    },
+    "runtime/local_execution_gate.py": {
+      "mode": "100644",
+      "sha256": "3ca33afee5b3bcd87a1b13b9d4a1405dcb65c6df2b24b60205825401d3cde190"
+    },
+    "runtime/local_execution_lease.py": {
+      "mode": "100644",
+      "sha256": "9af3f488c970adb5dc1c87c9916d9c981220cd84cfc3c4cbec58af6ad06a775e"
+    },
+    "runtime/local_execution_lease_state.py": {
+      "mode": "100644",
+      "sha256": "94d3acbb0540a601dbd06e3442f92f080dc4bd9ab82c6d74b8f652aa12f16502"
+    },
+    "runtime/stop_adapter.py": {
+      "mode": "100644",
+      "sha256": "1f65d4061f39d57b60253867037e83313e3358b585e67e8c2a7eab0b8e621e41"
+    },
+    "runtime/tool_policy.py": {
+      "mode": "100644",
+      "sha256": "f7a3ae8774214dc806a0c537cfc16646127da0dd0f3b1a6b31c9612cdc843c38"
+    },
+    "runtime/translation_konjac.py": {
+      "mode": "100644",
+      "sha256": "956e98d2524df214eab0c775d8d6ce4daeda1edd081590ad6f7ba79d7eb21c90"
+    },
+    "schemas/intent_interpreter_output.schema.json": {
+      "mode": "100644",
+      "sha256": "f2e016797a5aae2139fc37ec42a4dfb77eb9e7129e711e4fbac263fa0bec1663"
+    },
+    "scripts/health_check.py": {
+      "mode": "100755",
+      "sha256": "372da4dd0be546dec8e061b955ec8106ce14ff1f44829c07c0cf9fb44ce88918"
+    },
+    "scripts/install.sh": {
+      "mode": "100755",
+      "sha256": "31f8eaa7e87b0cc5ab19bf29f4005a72328429f2a42028dc612a64cc509cda23"
+    },
+    "scripts/release_promote.py": {
+      "mode": "100755",
+      "sha256": "78566f81d1e0b9c1048498c60d164fd6bd797ae4b1d8dcc1616a9aa11e75e7e5"
+    },
+    "scripts/uninstall.sh": {
+      "mode": "100755",
+      "sha256": "3794c02d5fdda6f2e4f3a2ca04702b71a2344666febea3c374616b355c3ac885"
+    },
+    "tests/acceptance_record_claude.md": {
+      "mode": "100644",
+      "sha256": "9c4aac9d654329cc305a2dfac9e64c8ded9ee63fc88d24455a6c7f43f6869038"
+    },
+    "tests/case1_acceptance_v2_spec.md": {
+      "mode": "100644",
+      "sha256": "33dbd45f9ea14ccfc60cdb5f9055eae9ee45c24cca9b0add90863c4da95fcfcb"
+    },
+    "tests/case1_v2_sampling_contract.md": {
+      "mode": "100644",
+      "sha256": "90a8590156d6c356272831464538dc4b67c19b79eae68d9c008fc0591848bf5b"
+    },
+    "tests/test_claude_code_adapter.py": {
+      "mode": "100644",
+      "sha256": "dde0dbbb54e4b6e4d3455568d6c5aa2802bb92fbe34956c088b4e63f0855ac6f"
+    },
+    "tests/test_cli.py": {
+      "mode": "100644",
+      "sha256": "67bd4c8af4c490420ff7f441c6819740426fcdc2a4f9562e4296e8f81af97701"
+    },
+    "tests/test_human_layer_adapter.py": {
+      "mode": "100644",
+      "sha256": "32632580d044b37df941e97a3e7be0225901f688fafdd3b8b2c459a95e7654d3"
+    },
+    "tests/test_local_execution_gate.py": {
+      "mode": "100644",
+      "sha256": "c654ed9cc0da2bef04310f744f375e0a647a4c22882089f90d37b0e62b45168f"
+    },
+    "tests/test_local_execution_lease.py": {
+      "mode": "100644",
+      "sha256": "89bfc3173a06358489d1b66b8f1fae45a4bd9411d0fb8cc5aa57d2d685382215"
+    },
+    "tests/test_local_execution_lease_state.py": {
+      "mode": "100644",
+      "sha256": "bd7b9a047cf0db88f7eb3800fafbc7934686ca57e82be17f91eb6310ad1369a1"
+    },
+    "tests/test_portable_core.py": {
+      "mode": "100644",
+      "sha256": "85ff3ee41816ac458992ae7dbcb7469e450f882dd38cee33cfa0f54ea8521cd7"
+    },
+    "tests/test_release_lifecycle.py": {
+      "mode": "100644",
+      "sha256": "3af7d909d5fb7eff9a4347db96b5235383f39c6506811614ed870d9effb04b98"
+    },
+    "tests/test_translation_konjac.py": {
+      "mode": "100644",
+      "sha256": "2d58a4c6959a9d07667b1264cd6971c635a01dec0535ca4f770c3652ff67a98c"
+    },
+    "ux/japanese-human-layer/README.md": {
+      "mode": "100644",
+      "sha256": "e3565e98569e0f60f4f3bb44c1f739f34f7041ee6ed3cf08559d3feb1d71a204"
+    },
+    "ux/japanese-human-layer/contracts/human_request_contract.md": {
+      "mode": "100644",
+      "sha256": "295cdb9bdd5eff033cc76d81cc9f44a53beacd666c889b1911c866fec26a4b8c"
+    },
+    "ux/japanese-human-layer/fixtures/expected_behavior.jsonl": {
+      "mode": "100644",
+      "sha256": "26e0393113211885edc82379fb2c5d78e6d82d4ec1d910a530d7338d5a773304"
+    },
+    "ux/japanese-human-layer/fixtures/vague_requests_ja.jsonl": {
+      "mode": "100644",
+      "sha256": "44c6c015c00080b6392d2725ec8f8ff70361eb23fec61873a4573e0a81d8ddde"
+    },
+    "ux/japanese-human-layer/prompts/clarification_batcher.md": {
+      "mode": "100644",
+      "sha256": "331d00ee086122a90382159a6f7163d87f4088e4bc73e36f43151e7321a73452"
+    },
+    "ux/japanese-human-layer/prompts/execution_preview.md": {
+      "mode": "100644",
+      "sha256": "316d0992ef5b9dacd0aab92f1124b42b74f75c53925bad4235a1d05223d0c44e"
+    },
+    "ux/japanese-human-layer/prompts/intent_interpreter.md": {
+      "mode": "100644",
+      "sha256": "f7bc8c3cc15ad48886a3203ea38eff522272309b1c0710e1f913f0322d263b9b"
+    },
+    "ux/japanese-human-layer/prompts/result_presenter.md": {
+      "mode": "100644",
+      "sha256": "f5f1a16ba2fb2c8acebe640d5beab2fda6603ec01f7530d7f5ac454a83fdff2c"
+    },
+    "ux/japanese-human-layer/tests/test_human_layer.py": {
+      "mode": "100644",
+      "sha256": "288af96936386f8cba3d196a2614b4692b273fe24e0810accefef0505b84c05d"
+    }
+  },
+  "schema": "ume-harness-release-identity.v1",
+  "source_commit": "acab665fbd70d593d3de094a280db108f547bee3",
+  "source_payload_count": 63,
+  "source_payload_root_sha256": "c9efd7f0f02543867e0f15427f1298a5a9cca64e3e74979fe5495e556b0eb612"
+}

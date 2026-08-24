@@ -1,0 +1,186 @@
+{
+  "version": "0.1.0",
+  "language": "ja-JP",
+  "concepts": {
+    "git.status": {
+      "headline": "変更されたファイルがあるか確認しています",
+      "badge": "💻 PC内のみ / ファイル変更なし / 外部サービス変更なし",
+      "explanation": "作業前後の状態を確認しています。PC内のファイルは変更されず、GitHub等の外部サービスへの変更もありません。",
+      "impact": "READ_ONLY"
+    },
+    "git.diff.working": {
+      "headline": "作業中の変更内容（前後の差分）を確認しています",
+      "badge": "💻 PC内のみ / ファイル変更なし / 外部サービス変更なし",
+      "explanation": "修正前と修正後の違いを確認しています。ファイルの変更や外部への送信はありません。",
+      "impact": "READ_ONLY"
+    },
+    "git.diff.staged": {
+      "headline": "次のCommit（保存）に入る予定の変更だけを確認しています",
+      "badge": "💻 PC内のみ / ファイル変更なし / 外部サービス変更なし",
+      "explanation": "すでに選択（Stage）された変更差分を確認しています。ファイルの変更や外部への送信はありません。",
+      "impact": "READ_ONLY"
+    },
+    "git.add.dot": {
+      "headline": "現在いる場所以下の変更を、次のCommit候補に追加しています",
+      "badge": "💻 PC内のみ / 選択印付け / 外部サービス変更なし",
+      "explanation": "現在いるフォルダ以下にある変更に「次の保存に含める」という印（Stage）を付けています。まだネットには送信されません。",
+      "impact": "LOCAL_WRITE"
+    },
+    "git.add.all": {
+      "headline": "リポジトリ全体のすべての変更を、次のCommit候補に追加しています",
+      "badge": "💻 PC内全体 / 全変更をStage / 外部サービス変更なし",
+      "explanation": "現在地に関わらず、プロジェクト全体のすべての変更（削除や新規追加を含む）を次のCommit候補に追加しています。",
+      "impact": "LOCAL_WRITE"
+    },
+    "git.add.path": {
+      "headline": "「{path}」の変更を、次のCommit候補に追加しています",
+      "badge": "💻 PC内のみ / 選択印付け / 外部サービス変更なし",
+      "explanation": "指定したファイルの変更に「次の保存に含める」という印（Stage）を付けています。まだネットには送信されません。",
+      "impact": "LOCAL_WRITE"
+    },
+    "git.commit.normal": {
+      "headline": "今の変更をPC内のGit履歴に保存しようとしています{msg_note}",
+      "badge": "💻 PC内のGit履歴のみ / ⚠️ まだGitHub等の外部には送信されません",
+      "explanation": "作業内容をPC内のGit履歴に一区切りとして保存（Commit）します。GitHub等の外部サービスにはまだ送信されません。",
+      "impact": "LOCAL_WRITE"
+    },
+    "git.commit.amend": {
+      "headline": "⚠️ 直前のCommit履歴を上書き・修正しようとしています{msg_note}",
+      "badge": "💻 PC内のGit履歴書き換え / ⚠️ 直前のCommitが置き換わります",
+      "explanation": "直前に保存したCommitを修正・上書きします（新しい履歴が追加されるのではなく直前履歴が書き換わります）。まだ外部には送信されません。",
+      "impact": "LOCAL_WRITE"
+    },
+    "git.push.normal": {
+      "headline": "⚠️ ここからPCの外へ出ます。{service} の「{branch}」へ履歴を送ろうとしています",
+      "badge": "🌐 外部送信 ({service}) / ⚠️ 本線 main への合流(Merge)ではありません",
+      "explanation": "PC内に保存した変更履歴を、インターネット上の保管先（{service}）へ送信（Push）します。まだ本線（main）へ合流（Merge）する操作ではありません。",
+      "impact": "EXTERNAL_TRANSMIT"
+    },
+    "git.push.main": {
+      "headline": "⚠️ 注意: 本線「main」へ変更履歴を直接送信（Push）しようとしています",
+      "badge": "🌐 外部送信 ({service}) / ⚠️ 本線 main の直接更新",
+      "explanation": "本線（main）ブランチへ変更を送信します。プロジェクトの主要な作業線が直接更新されます。",
+      "impact": "EXTERNAL_TRANSMIT"
+    },
+    "git.push.force": {
+      "headline": "🚨 危険: {service} 上の履歴を強制上書き（Force Push）しようとしています",
+      "badge": "🚨 破壊的外部送信 ({service}) / 過去履歴が失われるリスクあり",
+      "explanation": "保管先（{service}）にある過去の変更履歴を強制的に上書きします。共同作業者の履歴と衝突し、復元が困難になる可能性があります。",
+      "impact": "DESTRUCTIVE"
+    },
+    "git.push.delete": {
+      "headline": "🚨 危険: {service} 上の作業ブランチ「{branch}」を削除しようとしています",
+      "badge": "🗑️ 外部リソース削除 ({service})",
+      "explanation": "保管先（{service}）にあるリモートブランチを完全に削除します。",
+      "impact": "DESTRUCTIVE"
+    },
+    "git.push.all": {
+      "headline": "⚠️ すべてのローカルブランチを {service} へ一括送信しようとしています",
+      "badge": "🌐 外部一括送信 ({service})",
+      "explanation": "手元のすべての作業ブランチを保管先（{service}）へ一括で送信します。",
+      "impact": "EXTERNAL_TRANSMIT"
+    },
+    "git.push.tags": {
+      "headline": "⚠️ タグ（バージョン印）を {service} へ送信しようとしています",
+      "badge": "🌐 外部タグ送信 ({service})",
+      "explanation": "バージョン付けされたタグ情報を保管先（{service}）へ送信します。",
+      "impact": "EXTERNAL_TRANSMIT"
+    },
+    "test.pytest": {
+      "headline": "プログラムが期待通り動くか、テストを実行して確認しています",
+      "badge": "🧪 テスト実行中 / テスト内容による副作用の可能性あり",
+      "explanation": "動作検証用のテストプログラムを実行しています。テスト内容によっては一時ファイルの生成や通信が発生する可能性があります。",
+      "impact": "TEST_EXECUTION"
+    },
+    "test.npm": {
+      "headline": "プロジェクトのテストを実行して、動作に問題がないか確認しています",
+      "badge": "🧪 テスト実行中 / テスト内容による副作用の可能性あり",
+      "explanation": "プロジェクトのテストスイートを実行しています。テスト内容によっては一時ファイルの生成や通信が発生する可能性があります。",
+      "impact": "TEST_EXECUTION"
+    },
+    "package.npm.install": {
+      "headline": "このプロジェクトが使う追加部品（ライブラリ）を準備しています",
+      "badge": "📦 PC内の開発環境更新 / 🌐 通信発生の可能性あり",
+      "explanation": "必要なライブラリを準備しています。PC内のファイルや設定が更新され、インターネット通信が発生する可能性があります。",
+      "impact": "LOCAL_WRITE"
+    },
+    "fs.delete": {
+      "headline": "⚠️ 「{target}」を削除しようとしています",
+      "badge": "🗑️ 破壊的変更 / 通常のUndoやゴミ箱からは戻せません",
+      "explanation": "対象のファイルまたはフォルダを削除します。通常のゴミ箱やUndo操作では復元できない形で削除されます。",
+      "impact": "DESTRUCTIVE"
+    },
+    "fs.read": {
+      "headline": "「{path}」の中身を読んでいます",
+      "badge": "💻 PC内のみ / 閲覧のみ / GitHub等の変更なし",
+      "explanation": "ファイル「{path}」の内容を確認しています。ファイル自体の書き換えや外部への変更はありません。",
+      "impact": "READ_ONLY"
+    },
+    "fs.grep": {
+      "headline": "ファイルや文字「{query}」を検索しています",
+      "badge": "💻 PC内のみ / 検索のみ / GitHub等の変更なし",
+      "explanation": "プロジェクト内から該当するファイルや文字列を検索しています。ファイルの書き換えや外部への変更はありません。",
+      "impact": "READ_ONLY"
+    },
+    "fs.edit": {
+      "headline": "「{path}」を書き換えています",
+      "badge": "💻 PC内のファイルを変更 / 🌐 GitHub等の変更なし",
+      "explanation": "PC内のファイル「{path}」を修正しています。まだGitHub等の外部サービスには送信・反映されません。",
+      "impact": "LOCAL_WRITE"
+    },
+    "fs.write_new": {
+      "headline": "「{path}」を新しく作成しています",
+      "badge": "💻 PC内に新規ファイル作成 / 🌐 GitHub等の変更なし",
+      "explanation": "PC内に新しいファイル「{path}」を作成しています。まだGitHub等の外部サービスには送信・反映されません。",
+      "impact": "LOCAL_WRITE"
+    },
+    "fs.write_overwrite": {
+      "headline": "⚠️ 既存のファイル「{path}」を上書き保存しようとしています",
+      "badge": "💻 PC内の既存ファイルを上書き / 🌐 GitHub等の変更なし",
+      "explanation": "すでに存在するファイル「{path}」を新しい内容で上書きします。元の内容は置き換わります。",
+      "impact": "LOCAL_WRITE"
+    },
+    "shell.compound": {
+      "headline": "複数のコマンドを組み合わせた複合処理を実行しようとしています",
+      "badge": "⚠️ 複合処理 ({max_impact}) / 各処理の影響を確認してください",
+      "explanation": "パイプや条件分岐（&&, ;, | 等）を含む複合処理です。\n最大リスクレベル: {max_impact}\n詳細: {segments_summary}",
+      "impact": "COMPOUND"
+    },
+    "error.command_failed": {
+      "headline": "🔴 コマンドの実行が途中で失敗しました（終了コード: {exit_code}）",
+      "badge": "⚠️ 処理未完了 / 変更状態を確認してください",
+      "explanation": "実行した処理が途中でエラーを返しました。最後まで正常に完了していません。\n⚠️ 注意: 失敗する前に一部のファイル変更等が発生したかは、このエラー表示だけでは判断できません。\n\n詳細: {error_detail}\n推奨: 現在のファイルの変更状態（git status など）を確認することをおすすめします。",
+      "impact": "ERROR"
+    },
+    "error.interrupted": {
+      "headline": "🛑 処理が途中で中断されました",
+      "badge": "⏹️ 中断 / 処理未完了",
+      "explanation": "ユーザーまたはシステムにより処理が中断されました。処理は途中で停止しています。\n推奨: 現在のファイルの変更状態を確認することをおすすめします。",
+      "impact": "ERROR"
+    },
+    "error.permission_denied": {
+      "headline": "🛑 安全設定または権限制限により、操作がブロックされました",
+      "badge": "🛡️ 安全停止 / 操作は実行されませんでした",
+      "explanation": "安全ガードまたはシステムの制限により操作が遮断されました。この操作による変更は行われていません。",
+      "impact": "BLOCKED"
+    },
+    "unknown.command": {
+      "headline": "コマンド「{cmd_preview}」を実行しようとしています",
+      "badge": "❓ 未知のコマンド / 影響範囲はコマンド内容によります",
+      "explanation": "システムへの影響は実行内容に依存します（未判定の操作）。\n実行コマンド: {cmd_full}",
+      "impact": "UNKNOWN"
+    },
+    "unknown.tool": {
+      "headline": "ツール「{tool_name}」を実行しようとしています",
+      "badge": "❓ 未知のツール / 動作内容はツールに依存します",
+      "explanation": "未登録のツール呼び出しです（未判定の操作）。\nTool: {tool_name}",
+      "impact": "UNKNOWN"
+    },
+    "fallback.failure": {
+      "headline": "⚠️ この操作の日本語解説を生成できませんでした",
+      "badge": "❓ 解説生成失敗 / 影響: 未判定",
+      "explanation": "解説エンジンの処理中に未処理の例外が発生しました。安全のため、表示されている技術コマンドを直接ご確認ください。",
+      "impact": "UNKNOWN"
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "UmeHarnessConceptPack",
+  "type": "object",
+  "required": ["version", "language", "concepts"],
+  "properties": {
+    "version": { "type": "string" },
+    "language": { "type": "string" },
+    "concepts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["headline", "badge", "explanation", "impact"],
+        "properties": {
+          "headline": { "type": "string" },
+          "badge": { "type": "string" },
+          "explanation": { "type": "string" },
+          "impact": {
+            "type": "string",
+            "enum": ["READ_ONLY", "LOCAL_WRITE", "TEST_EXECUTION", "EXTERNAL_TRANSMIT", "DESTRUCTIVE", "COMPOUND", "ERROR", "BLOCKED", "UNKNOWN"]
+          }
+        }
+      }
+    }
+  }
+}
