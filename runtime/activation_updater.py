@@ -50,7 +50,7 @@ class GenerationConflictError(ActivationError):
 
 
 def compute_installed_root_digest(install_dir: str | None = None) -> str:
-    """Compute the canonical SHA-256 root digest of the 14 closure files in the protected runtime."""
+    """Compute the canonical SHA-256 root digest of the explicit protected-runtime closure."""
     if install_dir is None:
         # Default to parent directory of runtime/
         install_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

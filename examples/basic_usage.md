@@ -1,8 +1,9 @@
-# 使用例（実測データ）
+# 使用例（historical reference）
 
-> このファイルの入出力は架空のサンプルではなく、`tests/evidence/
-> case1_sampling_contract_rev2_20260820/batch1/`のfresh run（claude batch1
-> trial1）の実データをそのまま使用している。改変・要約はしていない。
+> この入出力は過去のfresh runから保存されたhistorical referenceであり、経緯は
+> `PHASE4_HOLD.md`に記録されている。元の`tests/evidence/` raw artifactは現行release
+> closureに含まれないため、このファイル単独をcurrent model performanceや再現可能な
+> acceptance evidenceとして使わない。fixtureのCase 1期待値とも一致しないことを明示する。
 
 ## 入力
 
@@ -11,7 +12,7 @@ raw_request: このフォルダの資料まとめて、必要ならREADMEもい�
 workspace_context: 現在の作業フォルダ: ~/Documents/資料/ 。中身は doc1.pdf, doc2.pdf, doc3.pdf, README.md の4件のみ。他に候補となる資料フォルダは存在しない。
 ```
 
-## Step 1: LLM出力（`ux/japanese-human-layer/prompts/intent_interpreter.md`のプロンプトに対する`claude-sonnet-5`の実際の応答）
+## Step 1: 保存されたhistorical LLM出力
 
 ```json
 {

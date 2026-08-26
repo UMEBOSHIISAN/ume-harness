@@ -8,10 +8,13 @@ and recommending next verification steps (e.g. git status).
 
 from __future__ import annotations
 
+import sys
+
+sys.dont_write_bytecode = True
+
 import json
 import os
 import re
-import sys
 
 _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _RUNTIME_DIR = os.path.join(_PKG_ROOT, "runtime")
@@ -25,6 +28,7 @@ def main() -> int:
     raw = sys.stdin.read()
     if not raw.strip():
         return 0
+    banner = ""
     try:
         data = json.loads(raw)
     except Exception:
@@ -57,14 +61,28 @@ def main() -> int:
             f"   詳細: {explanation}\n"
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         )
-        sys.stderr.write(banner)
     except Exception:
         # Fail-visible translation fallback
-        sys.stderr.write(
+        banner = (
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             "🇯🇵 ⚠️ エラー解説の生成に失敗しました（技術エラー表示をご確認ください）\n"
             "   ❓ 解説生成失敗 / 影響: 未判定\n"
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        )
+
+    if banner:
+        sys.stdout.write(
+            json.dumps(
+                {
+                    "systemMessage": banner,
+                    "hookSpecificOutput": {
+                        "hookEventName": "PostToolUseFailure",
+                        "additionalContext": banner,
+                    },
+                },
+                ensure_ascii=False,
+            )
+            + "\n"
         )
 
     return 0

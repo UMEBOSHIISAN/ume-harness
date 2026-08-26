@@ -121,6 +121,103 @@ class LocalExecutionLeaseStateTests(unittest.TestCase):
         self.assertGreater(state.expires_at, state.issued_at)
         self.assertNotEqual(state.delta_chain_digest, "")
 
+    def test_issue_persists_capability_ceiling_and_test_profile(self):
+        task = CanonicalTaskReference(
+            task_id="test-only-task",
+            task_contract_sha256=_sha256("task:test-only-task"),
+            allowed_capabilities=frozenset({"test"}),
+            test_profile="python-tests-v1",
+        )
+        policy = PolicyReference(
+            policy_id="site-policy-v0",
+            policy_sha256=_sha256("site-policy-v0"),
+            allowed_capabilities=frozenset({"edit", "test"}),
+            approved_test_profiles=frozenset({"python-tests-v1"}),
+        )
+        context = RuntimeContext(
+            repository="UMEBOSHIISAN/ume-harness",
+            worktree_realpath="/tmp/ume-harness-phase2-worktree",
+            branch="task/test-only-task",
+            starting_head="a" * 40,
+            baseline_status_digest=_sha256("clean-status"),
+            baseline_tree_digest=_sha256("tree-at-start"),
+        )
+        lease = derive_lease(task, policy, context)
+
+        state = LeaseStateStore(self.state_path).issue(lease)
+        payload = json.loads(Path(self.state_path).read_text(encoding="utf-8"))
+
+        self.assertEqual(state.capabilities, frozenset({"test"}))
+        self.assertEqual(state.test_profile, "python-tests-v1")
+        self.assertEqual(payload["leases"][0]["capabilities"], ["test"])
+        self.assertEqual(payload["leases"][0]["test_profile"], "python-tests-v1")
+
+    def test_missing_persisted_capabilities_fail_closed(self):
+        lease = _lease()
+        store = LeaseStateStore(self.state_path)
+        store.issue(lease)
+        payload = json.loads(Path(self.state_path).read_text(encoding="utf-8"))
+        payload["leases"][0].pop("capabilities", None)
+        payload["leases"][0].pop("test_profile", None)
+        Path(self.state_path).write_text(json.dumps(payload), encoding="utf-8")
+
+        with self.assertRaises(LeaseStateCorruptError):
+            store.get(lease.lease_id)
+
+    def test_valid_shaped_capability_tampering_breaks_lease_identity(self):
+        task = CanonicalTaskReference(
+            task_id="test-only-task",
+            task_contract_sha256=_sha256("task:test-only-task"),
+            allowed_capabilities=frozenset({"test"}),
+            test_profile="python-tests-v1",
+        )
+        policy = PolicyReference(
+            policy_id="site-policy-v0",
+            policy_sha256=_sha256("site-policy-v0"),
+            allowed_capabilities=frozenset({"edit", "test"}),
+            approved_test_profiles=frozenset({"python-tests-v1"}),
+        )
+        context = RuntimeContext(
+            repository="UMEBOSHIISAN/ume-harness",
+            worktree_realpath="/tmp/ume-harness-phase2-worktree",
+            branch="task/test-only-task",
+            starting_head="a" * 40,
+            baseline_status_digest=_sha256("clean-status"),
+            baseline_tree_digest=_sha256("tree-at-start"),
+        )
+        lease = derive_lease(task, policy, context)
+        store = LeaseStateStore(self.state_path)
+        store.issue(lease)
+        payload = json.loads(Path(self.state_path).read_text(encoding="utf-8"))
+        payload["leases"][0]["capabilities"] = ["edit"]
+        payload["leases"][0]["test_profile"] = None
+        Path(self.state_path).write_text(json.dumps(payload), encoding="utf-8")
+
+        with self.assertRaisesRegex(LeaseStateCorruptError, "lease identity mismatch"):
+            store.get(lease.lease_id)
+
+    def test_lifecycle_tampering_breaks_record_integrity(self):
+        lease = _lease()
+        observer = _Observer(_baseline(lease))
+        store = LeaseStateStore(self.state_path, observer=observer)
+        store.issue(lease)
+        store.activate(lease.lease_id)
+        store.revoke(lease.lease_id, "human revoked")
+        payload = json.loads(Path(self.state_path).read_text(encoding="utf-8"))
+        record = payload["leases"][0]
+
+        self.assertIn("record_digest", record)
+        record["lifecycle"] = LeaseLifecycle.ACTIVE.value
+        record["lifecycle_history"] = [
+            LeaseLifecycle.ISSUED.value,
+            LeaseLifecycle.ACTIVE.value,
+        ]
+        record["terminal_reason"] = None
+        Path(self.state_path).write_text(json.dumps(payload), encoding="utf-8")
+
+        with self.assertRaisesRegex(LeaseStateCorruptError, "record integrity mismatch"):
+            store.get(lease.lease_id)
+
     def test_activation_requires_exact_baseline_and_marks_mismatch_invalid(self):
         lease = _lease()
         observer = _Observer(_changed_state(lease, "out-of-band-before-activation"))

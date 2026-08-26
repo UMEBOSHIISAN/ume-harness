@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """
-decision_state.py — Portable Decision State Writer (ume-harness Core)
+decision_state.py — LOCAL DECISION-FACT / RESUME STATE (ume-harness Core)
 
 個人実装（canonical_decision_writer.py）から、Claude Code固有の project-memory
 ディレクトリ命名規則（`-Users-umeboshi` のような環境依存パス）への直接依存を除去し、
 汎用の runtime-state パス解決へ一般化したもの。
 
-Human Decision Fact（人間が下した決定の事実）と Executable Authority（それを実行する権限）
-を厳格に分離し、アトミック書込・スキーマ検証付きで状態を更新する。
+local human-decision factsをresume / compaction contextのためだけに記録する。
+Human Decision Fact ≠ Executable Authorityであり、このstateはMothership Decision Surface、
+external authority、FrozenAction approval stateのいずれでもない。v0ではhost runtimeに未結線である。
+アトミック書込・スキーマ検証付きで状態を更新する。
 
 path resolution:
   1. 環境変数 UME_HARNESS_STATE_DIR が設定されていればそれを使う

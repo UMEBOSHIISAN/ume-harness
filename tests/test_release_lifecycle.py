@@ -23,13 +23,14 @@ PUBLIC_MIRROR_REPOSITORY = "https://github.com/UMEBOSHIISAN/ume-harness.git"
 OWNED_EVENTS = ("PreToolUse", "PermissionRequest", "PostToolUseFailure")
 
 
-def _run(args, *, env=None, cwd=ROOT):
+def _run(args, *, env=None, cwd=ROOT, input=None):
     return subprocess.run(
         [str(arg) for arg in args],
         cwd=cwd,
         env=env,
         capture_output=True,
         text=True,
+        input=input,
     )
 
 
@@ -151,6 +152,30 @@ def test_release_identity_is_explicit_and_detects_tampered_bytes():
         assert identity_check["passed"] is False
         assert "expected=" in identity_check["detail"]
         assert "actual=" in identity_check["detail"]
+
+
+def test_release_identity_rejects_symlinked_closure_directories():
+    with tempfile.TemporaryDirectory() as td:
+        temp_root = Path(td)
+        _home, prefix, env = _install(temp_root)
+        installed = prefix / "lib/ume-harness" / VERSION
+        external_runtime = temp_root / "external-runtime"
+        (installed / "runtime").rename(external_runtime)
+        (installed / "runtime").symlink_to(external_runtime, target_is_directory=True)
+
+        checked = _run(
+            [
+                sys.executable,
+                installed / "scripts/health_check.py",
+                "--installed-dir",
+                installed,
+                "--identity-only",
+            ],
+            env=env,
+        )
+
+        assert checked.returncode != 0
+        assert "symlink" in (checked.stdout + checked.stderr).lower()
 
 
 def test_fresh_settings_setup_then_disconnect_succeeds_without_unrelated_state():
@@ -530,6 +555,407 @@ def test_install_refuses_user_owned_cli_without_touching_its_bytes(symlink):
         assert not (prefix / "lib/ume-harness" / VERSION).exists()
 
 
+def test_install_force_refuses_user_owned_regular_cli_without_touching_its_bytes():
+    with tempfile.TemporaryDirectory() as td:
+        temp_root = Path(td)
+        home = temp_root / "home"
+        prefix = temp_root / "prefix"
+        home.mkdir()
+        wrapper, target, original = _write_user_owned_cli(temp_root, prefix, symlink=False)
+        env = os.environ.copy()
+        env["HOME"] = str(home)
+
+        install = _run(
+            ["bash", ROOT / "scripts/install.sh", "--prefix", prefix, "--force"],
+            env=env,
+        )
+
+        assert install.returncode != 0
+        assert "Unrelated file" in install.stderr
+        assert wrapper.is_file()
+        assert target.read_bytes() == original
+        assert not (prefix / "lib/ume-harness" / VERSION).exists()
+
+
+def test_install_preserves_preexisting_predictable_staging_bytes():
+    with tempfile.TemporaryDirectory() as td:
+        temp_root = Path(td)
+        home = temp_root / "home"
+        prefix = temp_root / "prefix"
+        pid_file = temp_root / "installer-shell-pid"
+        home.mkdir()
+        env = os.environ.copy()
+        env["HOME"] = str(home)
+        marker_bytes = b"user-owned staging bytes\n"
+        shell = "\n".join(
+            (
+                "set -eu",
+                f"prefix={shlex.quote(str(prefix))}",
+                f"pid_file={shlex.quote(str(pid_file))}",
+                'staging="$prefix/lib/ume-harness/.staging_$$"',
+                'mkdir -p "$staging"',
+                f"printf %s {shlex.quote(marker_bytes.decode('utf-8'))} > \"$staging/marker\"",
+                'printf %s "$$" > "$pid_file"',
+                f"exec bash {shlex.quote(str(ROOT / 'scripts/install.sh'))} --prefix \"$prefix\"",
+            )
+        )
+
+        install = _run(["bash", "-c", shell], env=env)
+
+        assert install.returncode == 0, install.stdout + install.stderr
+        shell_pid = pid_file.read_text(encoding="utf-8")
+        marker = prefix / "lib/ume-harness" / f".staging_{shell_pid}" / "marker"
+        assert marker.read_bytes() == marker_bytes
+
+
+def test_install_force_refuses_hardlinked_owned_wrapper_without_touching_shared_inode():
+    with tempfile.TemporaryDirectory() as td:
+        temp_root = Path(td)
+        _home, prefix, env = _install(temp_root)
+        installed = prefix / "lib/ume-harness" / VERSION
+        wrapper = prefix / "bin/ume-harness"
+        outside = temp_root / "outside-owned-looking-wrapper"
+        original = wrapper.read_bytes()
+        payload_marker = installed / "package_manifest.json"
+        payload_before = payload_marker.read_bytes()
+
+        outside.write_bytes(original)
+        wrapper.unlink()
+        os.link(outside, wrapper)
+        assert os.stat(wrapper).st_nlink == 2
+
+        reinstall = _run(
+            ["bash", ROOT / "scripts/install.sh", "--prefix", prefix, "--force"],
+            env=env,
+        )
+
+        assert reinstall.returncode != 0
+        assert "Unrelated file" in reinstall.stderr
+        assert outside.read_bytes() == original
+        assert wrapper.read_bytes() == original
+        assert os.stat(wrapper).st_nlink == 2
+        assert payload_marker.read_bytes() == payload_before
+
+
+def test_install_force_refuses_hardlinked_payload_without_touching_shared_inode():
+    with tempfile.TemporaryDirectory() as td:
+        temp_root = Path(td)
+        _home, prefix, env = _install(temp_root)
+        installed = prefix / "lib/ume-harness" / VERSION
+        payload_path = installed / "runtime/tool_policy.py"
+        outside = temp_root / "outside-owned-looking-payload"
+        original = payload_path.read_bytes()
+
+        outside.write_bytes(original)
+        payload_path.unlink()
+        os.link(outside, payload_path)
+        assert os.stat(payload_path).st_nlink == 2
+
+        reinstall = _run(
+            ["bash", ROOT / "scripts/install.sh", "--prefix", prefix, "--force"],
+            env=env,
+        )
+
+        assert reinstall.returncode != 0
+        assert "Unproven version directory" in reinstall.stderr
+        assert outside.read_bytes() == original
+        assert payload_path.read_bytes() == original
+        assert os.stat(payload_path).st_nlink == 2
+
+
+def test_install_force_refuses_unproven_version_directory_without_touching_it():
+    with tempfile.TemporaryDirectory() as td:
+        temp_root = Path(td)
+        home = temp_root / "home"
+        prefix = temp_root / "prefix"
+        home.mkdir()
+        version_dir = prefix / "lib/ume-harness" / VERSION
+        version_dir.mkdir(parents=True)
+        marker = version_dir / "user-owned.txt"
+        original = b"user-owned payload\n"
+        marker.write_bytes(original)
+        env = os.environ.copy()
+        env["HOME"] = str(home)
+
+        install = _run(
+            ["bash", ROOT / "scripts/install.sh", "--prefix", prefix, "--force"],
+            env=env,
+        )
+
+        assert install.returncode != 0
+        assert "Unproven" in install.stderr
+        assert marker.read_bytes() == original
+        assert not (prefix / "bin/ume-harness").exists()
+
+
+def test_install_force_replaces_only_a_verified_owned_installation():
+    with tempfile.TemporaryDirectory() as td:
+        temp_root = Path(td)
+        _home, prefix, env = _install(temp_root)
+        installed = prefix / "lib/ume-harness" / VERSION
+        env.pop("PYTHONDONTWRITEBYTECODE", None)
+        cache_root = temp_root / "python-cache"
+        env["PYTHONPYCACHEPREFIX"] = str(cache_root)
+        cli_use = _run([prefix / "bin/ume-harness", "--help"], env=env)
+        assert cli_use.returncode == 0, cli_use.stdout + cli_use.stderr
+        direct_cli_use = _run([installed / "bin/ume-harness", "--help"], env=env)
+        assert direct_cli_use.returncode == 0, direct_cli_use.stdout + direct_cli_use.stderr
+        direct_runner_use = _run(
+            [installed / "adapters/claude-code/lease_gate_runner.py", "--help"],
+            env=env,
+        )
+        assert direct_runner_use.returncode == 0, direct_runner_use.stdout + direct_runner_use.stderr
+        hook_payloads = {
+            "pretooluse_hook.py": {
+                "hook_event_name": "PreToolUse",
+                "tool_name": "Read",
+                "tool_input": {"file_path": str(temp_root / "normal.txt")},
+                "cwd": str(temp_root),
+            },
+            "permission_request_hook.py": {
+                "hook_event_name": "PermissionRequest",
+                "tool_name": "Bash",
+                "tool_input": {"command": "git status"},
+            },
+            "posttooluse_failure_hook.py": {
+                "hook_event_name": "PostToolUseFailure",
+                "error": "synthetic failure",
+                "is_interrupt": False,
+            },
+        }
+        for hook_name, payload in hook_payloads.items():
+            hook_use = _run(
+                [installed / "adapters/claude-code" / hook_name],
+                env=env,
+                input=json.dumps(payload),
+            )
+            assert hook_use.returncode == 0, hook_use.stdout + hook_use.stderr
+        assert list(installed.rglob("*.pyc")) == []
+        installed_runtime_cache = [
+            path
+            for path in cache_root.rglob("*.pyc")
+            if f"ume-harness/{VERSION}/runtime/" in path.as_posix()
+        ]
+        assert installed_runtime_cache == []
+
+        reinstall = _run(
+            ["bash", ROOT / "scripts/install.sh", "--prefix", prefix, "--force"],
+            env=env,
+        )
+
+        assert reinstall.returncode == 0, reinstall.stdout + reinstall.stderr
+        health = _run(
+            [sys.executable, installed / "scripts/health_check.py", "--installed-dir", installed, "--prefix", prefix],
+            env=env,
+        )
+        assert health.returncode == 0, health.stdout + health.stderr
+
+
+def test_install_force_rejects_unproven_legacy_bytecode_cache():
+    hss = _load_module(ROOT / "runtime/hook_setup_service.py", "hook_setup_legacy_cache")
+    with tempfile.TemporaryDirectory() as td:
+        temp_root = Path(td)
+        _home, prefix, env = _install(temp_root)
+        installed = prefix / "lib/ume-harness" / VERSION
+        wrapper = prefix / "bin/ume-harness"
+        wrapper.write_text(
+            hss.render_cli_wrapper(str(installed), bytecode_safe=False),
+            encoding="utf-8",
+        )
+        env.pop("PYTHONDONTWRITEBYTECODE", None)
+        env.pop("PYTHONPYCACHEPREFIX", None)
+
+        imported = _run(
+            [
+                sys.executable,
+                "-c",
+                "import py_compile, sys; sys.pycache_prefix = None; py_compile.compile(sys.argv[1], doraise=True)",
+                installed / "runtime/tool_policy.py",
+            ],
+            env=env,
+            cwd=temp_root,
+        )
+        assert imported.returncode == 0, imported.stdout + imported.stderr
+        generated = list((installed / "runtime/__pycache__").glob("tool_policy.*.pyc"))
+        assert generated
+        generated_bytes = generated[0].read_bytes()
+
+        reinstall = _run(
+            ["bash", ROOT / "scripts/install.sh", "--prefix", prefix, "--force"],
+            env=env,
+        )
+
+        assert reinstall.returncode != 0
+        assert "Unproven version directory" in reinstall.stderr
+        assert generated[0].read_bytes() == generated_bytes
+        assert (installed / "runtime/__pycache__").is_dir()
+
+
+def test_owned_install_verifier_accepts_known_prior_identity_and_legacy_wrapper(monkeypatch):
+    health = _load_module(ROOT / "scripts/health_check.py", "health_check_prior_identity")
+    hss = _load_module(ROOT / "runtime/hook_setup_service.py", "hook_setup_prior_wrapper")
+    with tempfile.TemporaryDirectory() as td:
+        temp_root = Path(td)
+        _home, prefix, _env = _install(temp_root)
+        installed = prefix / "lib/ume-harness" / VERSION
+        wrapper = prefix / "bin/ume-harness"
+
+        actual_root = health.calculate_release_identity(
+            str(installed),
+            _read_json(installed / "package_manifest.json")["release_identity"]["closure"],
+        )
+        installed_health_sha = health._sha256_regular_file(
+            str(installed / "scripts/health_check.py")
+        )
+        monkeypatch.setattr(
+            health,
+            "_load_owned_release_anchors",
+            lambda: {actual_root: installed_health_sha},
+        )
+
+        owned, detail = health.verify_owned_install(str(installed))
+        assert owned, detail
+
+        legacy_wrapper = hss.render_cli_wrapper(str(installed), bytecode_safe=False)
+        wrapper.write_text(legacy_wrapper, encoding="utf-8")
+        assert hss.cli_wrapper_is_owned(str(wrapper), str(installed))
+
+
+def test_external_owned_install_verifier_uses_independent_health_anchor():
+    with tempfile.TemporaryDirectory() as td:
+        temp_root = Path(td)
+        _home, prefix, _env = _install(temp_root)
+        installed = prefix / "lib/ume-harness" / VERSION
+
+        verifier_scripts = temp_root / "verifier" / "scripts"
+        verifier_scripts.mkdir(parents=True)
+        external_health = verifier_scripts / "health_check.py"
+        external_gate = verifier_scripts / "release_promote.py"
+        external_health.write_bytes(
+            (ROOT / "scripts/health_check.py").read_bytes()
+            + b"\n# independently modified verifier probe\n"
+        )
+        external_gate.write_bytes((ROOT / "scripts/release_promote.py").read_bytes())
+        installed_health = installed / "scripts/health_check.py"
+        installed_health.write_bytes(external_health.read_bytes())
+
+        verifier = _load_module(external_health, "modified_external_health_check")
+        owned, detail = verifier.verify_owned_install(str(installed))
+
+        assert not owned
+        assert "health-check trust anchor mismatch" in detail
+
+
+def test_installed_owned_install_verifier_refuses_self_attestation():
+    with tempfile.TemporaryDirectory() as td:
+        temp_root = Path(td)
+        _home, prefix, env = _install(temp_root)
+        installed = prefix / "lib/ume-harness" / VERSION
+        installed_health = installed / "scripts/health_check.py"
+        installed_health.write_bytes(installed_health.read_bytes() + b"\n# tampered self-attestation probe\n")
+
+        self_check = _run(
+            [
+                sys.executable,
+                installed_health,
+                "--installed-dir",
+                installed,
+                "--owned-install-only",
+                "--json",
+            ],
+            env=env,
+        )
+
+        assert self_check.returncode != 0
+        assert "external verifier" in (self_check.stdout + self_check.stderr)
+
+
+def test_owned_install_verifier_rejects_fifo_without_blocking():
+    with tempfile.TemporaryDirectory() as td:
+        temp_root = Path(td)
+        _home, prefix, env = _install(temp_root)
+        installed = prefix / "lib/ume-harness" / VERSION
+        payload_path = installed / "runtime/decision_state.py"
+        payload_path.unlink()
+        os.mkfifo(payload_path)
+
+        try:
+            checked = subprocess.run(
+                [
+                    sys.executable,
+                    ROOT / "scripts/health_check.py",
+                    "--installed-dir",
+                    installed,
+                    "--owned-install-only",
+                ],
+                cwd=ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=2,
+            )
+        except subprocess.TimeoutExpired as exc:
+            pytest.fail(f"owned-install verification blocked on a FIFO: {exc}")
+
+        assert checked.returncode != 0
+        assert "unsafe=" in (checked.stdout + checked.stderr)
+
+
+def test_installed_hook_entrypoints_use_portable_env_shebangs():
+    hook_names = (
+        "pretooluse_hook.py",
+        "permission_request_hook.py",
+        "posttooluse_failure_hook.py",
+    )
+    for hook_name in hook_names:
+        hook_path = ROOT / "adapters/claude-code" / hook_name
+        lines = hook_path.read_text(encoding="utf-8").splitlines()
+        assert lines[0] == "#!/usr/bin/env python3"
+        assert "sys.dont_write_bytecode = True" in lines
+    runner_lines = (ROOT / "adapters/claude-code/lease_gate_runner.py").read_text(
+        encoding="utf-8"
+    ).splitlines()
+    assert "sys.dont_write_bytecode = True" in runner_lines
+
+
+def test_install_force_refuses_verified_payload_with_extra_user_bytes():
+    with tempfile.TemporaryDirectory() as td:
+        temp_root = Path(td)
+        _home, prefix, env = _install(temp_root)
+        installed = prefix / "lib/ume-harness" / VERSION
+        marker = installed / "user-owned-extra.txt"
+        original = b"do not delete\n"
+        marker.write_bytes(original)
+
+        reinstall = _run(
+            ["bash", ROOT / "scripts/install.sh", "--prefix", prefix, "--force"],
+            env=env,
+        )
+
+        assert reinstall.returncode != 0
+        assert "Unproven" in reinstall.stderr
+        assert marker.read_bytes() == original
+
+
+def test_install_force_refuses_payload_with_tampered_excluded_health_anchor():
+    with tempfile.TemporaryDirectory() as td:
+        temp_root = Path(td)
+        _home, prefix, env = _install(temp_root)
+        installed = prefix / "lib/ume-harness" / VERSION
+        installed_health = installed / "scripts/health_check.py"
+        original = b"#!/usr/bin/env python3\n# user-modified trust anchor\n"
+        installed_health.write_bytes(original)
+
+        reinstall = _run(
+            ["bash", ROOT / "scripts/install.sh", "--prefix", prefix, "--force"],
+            env=env,
+        )
+
+        assert reinstall.returncode != 0
+        assert "Unproven" in reinstall.stderr
+        assert installed_health.read_bytes() == original
+
+
 @pytest.mark.parametrize("symlink", (False, True), ids=("regular", "symlink"))
 def test_uninstall_preserves_user_owned_cli_and_target(symlink):
     with tempfile.TemporaryDirectory() as td:
@@ -807,6 +1233,10 @@ def test_release_promotion_is_clean_explicit_deterministic_and_one_way():
     assert contract["public_mirror_repository"] == PUBLIC_MIRROR_REPOSITORY
     assert contract["promotion_direction"] == "canonical_to_public_only"
     assert contract["public_source_edits_supported"] is False
+    assert (
+        release.OWNED_INSTALL_HEALTH_ANCHORS[release.EXPECTED_INSTALL_ROOT_DIGEST]
+        == release.EXPECTED_HEALTH_CHECK_SHA256
+    )
 
     with tempfile.TemporaryDirectory() as td:
         temp_root = Path(td)

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Pure Phase 1 core for the derived LocalExecutionLease capability.
 
-This module owns Lease derivation and validation semantics for ume-harness.
-It does not own the Frontdoor task contract, WGM evidence, host enforcement,
-filesystem inspection, lifecycle state, or external authority.
+This module owns Lease derivation and validation semantics for ume-harness's
+bounded local task and execution-policy inputs. It does not own host enforcement,
+filesystem inspection, lifecycle state, external governance evidence, or
+consequential external authority; the latter belongs to Mothership.
 """
 
 from __future__ import annotations
@@ -45,7 +46,7 @@ class LeaseValidationError(ValueError):
 
 @dataclass(frozen=True)
 class CanonicalTaskReference:
-    """Reference to a validated Frontdoor task card, not a replacement SSOT."""
+    """Reference to a validated bounded local task identity, not a replacement SSOT."""
 
     task_id: str
     task_contract_sha256: str
@@ -230,6 +231,30 @@ def _lease_id(payload: dict[str, object]) -> str:
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
+def compute_lease_identity(lease: LocalExecutionLease) -> str:
+    """Recompute the immutable Lease identity from every identity-bound field."""
+    if not isinstance(lease, LocalExecutionLease):
+        raise LeaseValidationError("lease has an invalid type")
+    return _lease_id(
+        {
+            "lease_version": lease.lease_version,
+            "task_id": lease.task_id,
+            "task_contract_sha256": lease.task_contract_sha256,
+            "policy_id": lease.policy_id,
+            "policy_sha256": lease.policy_sha256,
+            "repository": lease.repository,
+            "worktree_realpath": lease.worktree_realpath,
+            "branch": lease.branch,
+            "starting_head": lease.starting_head,
+            "baseline_status_digest": lease.baseline_status_digest,
+            "baseline_tree_digest": lease.baseline_tree_digest,
+            "capabilities": sorted(lease.capabilities),
+            "test_profile": lease.test_profile,
+            "external_mutations": lease.external_mutations,
+        }
+    )
+
+
 def derive_lease(
     task: CanonicalTaskReference,
     policy: PolicyReference,
@@ -316,6 +341,7 @@ __all__ = [
     "PolicyReference",
     "RuntimeContext",
     "V0_CAPABILITY_CEILING",
+    "compute_lease_identity",
     "derive_lease",
     "validate_lease",
 ]

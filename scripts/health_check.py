@@ -4,15 +4,18 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 import os
+import re
+import stat
 import subprocess
 import sys
 from typing import Any
 
 
-EXPECTED_ROOT_DIGEST = "27f2d1a77d6c4ff8c284d3de77533dd9e5b07e240eabdd69d65a88cb15ddb25a"
+EXPECTED_ROOT_DIGEST = "9cb9c48b520b59e2a269a96f760a28d702c4dcb84e46b7eae32f1b064a1f3ff5"
 IDENTITY_ALGORITHM = "sha256-canonical-path-map-v1"
 IDENTITY_SELF_EXCLUSIONS = frozenset({"scripts/health_check.py"})
 MANDATORY_RELEASE_FILES = frozenset({
@@ -38,15 +41,50 @@ def _is_safe_relative_path(path: Any) -> bool:
     )
 
 
+def _read_regular_file(path: str) -> bytes:
+    """Read an untrusted closure member without following or blocking on special files."""
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NONBLOCK", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(path, flags)
+    try:
+        mode = os.fstat(fd).st_mode
+        if not stat.S_ISREG(mode):
+            raise ValueError(f"release closure member is not a regular file: {path}")
+        with os.fdopen(fd, "rb", closefd=False) as f:
+            return f.read()
+    finally:
+        os.close(fd)
+
+
+def _sha256_regular_file(path: str) -> str:
+    return hashlib.sha256(_read_regular_file(path)).hexdigest()
+
+
+def _read_closure_member(root: str, relative_path: str) -> bytes:
+    """Read one closure file without accepting symlinked path components."""
+    current = os.path.abspath(root)
+    parts = relative_path.split(os.sep)
+    for index, part in enumerate(parts):
+        current = os.path.join(current, part)
+        metadata = os.lstat(current)
+        if stat.S_ISLNK(metadata.st_mode):
+            raise ValueError(
+                f"release closure path contains a symlink component: {relative_path}"
+            )
+        if index < len(parts) - 1 and not stat.S_ISDIR(metadata.st_mode):
+            raise ValueError(
+                f"release closure parent is not a directory: {relative_path}"
+            )
+    return _read_regular_file(current)
+
+
 def calculate_release_identity(root: str, closure: list[str]) -> str:
     """Hash the exact bytes at each explicit closure path into one root identity."""
     mapping: dict[str, str] = {}
     for rel in closure:
         if not _is_safe_relative_path(rel):
             raise ValueError(f"unsafe release closure path: {rel!r}")
-        path = os.path.join(root, rel)
-        with open(path, "rb") as f:
-            mapping[rel] = hashlib.sha256(f.read()).hexdigest()
+        mapping[rel] = hashlib.sha256(_read_closure_member(root, rel)).hexdigest()
     canonical = json.dumps(
         mapping,
         ensure_ascii=False,
@@ -58,8 +96,7 @@ def calculate_release_identity(root: str, closure: list[str]) -> str:
 
 def _load_manifest(installed_dir: str) -> dict[str, Any]:
     path = os.path.join(installed_dir, "package_manifest.json")
-    with open(path, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    data = json.loads(_read_regular_file(path).decode("utf-8"))
     if not isinstance(data, dict):
         raise ValueError("package_manifest.json root must be an object")
     return data
@@ -103,6 +140,107 @@ def verify_release_identity(installed_dir: str) -> tuple[bool, str]:
     if actual != EXPECTED_ROOT_DIGEST:
         return False, f"expected={EXPECTED_ROOT_DIGEST} actual={actual}"
     return True, f"expected={EXPECTED_ROOT_DIGEST} actual={actual}"
+
+
+def _load_owned_release_anchors() -> dict[str, str]:
+    """Load immutable install anchors from the separate release gate source."""
+    gate_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "release_promote.py")
+    tree = ast.parse(_read_regular_file(gate_path).decode("utf-8"), filename=gate_path)
+    anchors: Any = None
+    for node in tree.body:
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+            continue
+        target = node.targets[0]
+        if isinstance(target, ast.Name) and target.id == "OWNED_INSTALL_HEALTH_ANCHORS":
+            anchors = ast.literal_eval(node.value)
+            break
+    if not isinstance(anchors, dict) or not anchors:
+        raise ValueError("release gate does not define owned install health anchors")
+    if any(
+        not isinstance(root, str)
+        or not isinstance(health_sha, str)
+        or re.fullmatch(r"[0-9a-f]{64}", root) is None
+        or re.fullmatch(r"[0-9a-f]{64}", health_sha) is None
+        for root, health_sha in anchors.items()
+    ):
+        raise ValueError("release gate contains an invalid owned install health anchor")
+    return dict(anchors)
+
+
+def verify_owned_install(installed_dir: str) -> tuple[bool, str]:
+    """Verify exact owned install closure before a destructive same-version replacement."""
+    installed_dir = os.path.realpath(os.path.abspath(installed_dir))
+    verifier_path = os.path.realpath(os.path.abspath(__file__))
+    try:
+        verifier_is_installed_copy = os.path.commonpath((verifier_path, installed_dir)) == installed_dir
+    except ValueError:
+        verifier_is_installed_copy = False
+    if verifier_is_installed_copy:
+        return False, (
+            "owned install verification requires an external verifier; "
+            "the installed health-check copy cannot attest its own excluded bytes"
+        )
+
+    try:
+        manifest = _load_manifest(installed_dir)
+        payload, closure = _validate_manifest_contract(manifest)
+        expected_files = set(payload)
+        expected_dirs: set[str] = set()
+        for rel in payload:
+            parent = os.path.dirname(rel)
+            while parent:
+                expected_dirs.add(parent)
+                parent = os.path.dirname(parent)
+
+        actual_files: set[str] = set()
+        actual_dirs: set[str] = set()
+        unsafe_paths: list[str] = []
+        for current_root, dirnames, filenames in os.walk(installed_dir, followlinks=False):
+            for name in dirnames:
+                path = os.path.join(current_root, name)
+                rel = os.path.relpath(path, installed_dir)
+                actual_dirs.add(rel)
+                if not stat.S_ISDIR(os.lstat(path).st_mode):
+                    unsafe_paths.append(rel)
+            for name in filenames:
+                path = os.path.join(current_root, name)
+                rel = os.path.relpath(path, installed_dir)
+                actual_files.add(rel)
+                metadata = os.lstat(path)
+                if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
+                    unsafe_paths.append(rel)
+    except Exception as exc:
+        return False, f"owned install verification error: {exc}"
+
+    unexpected_files = sorted(actual_files - expected_files)
+    missing_files = sorted(expected_files - actual_files)
+    unexpected_dirs = sorted(actual_dirs - expected_dirs)
+    if unsafe_paths or unexpected_files or missing_files or unexpected_dirs:
+        return False, (
+            "install closure mismatch: "
+            f"unsafe={sorted(unsafe_paths)} missing={missing_files} "
+            f"unexpected_files={unexpected_files} unexpected_dirs={unexpected_dirs}"
+        )
+
+    try:
+        actual_root = calculate_release_identity(installed_dir, closure)
+        expected_health_sha = _load_owned_release_anchors().get(actual_root)
+        if expected_health_sha is None:
+            return False, f"unrecognized owned release identity: {actual_root}"
+        actual_health_sha = _sha256_regular_file(
+            os.path.join(installed_dir, "scripts/health_check.py")
+        )
+        if actual_health_sha != expected_health_sha:
+            return False, (
+                "health-check trust anchor mismatch: "
+                f"expected={expected_health_sha} actual={actual_health_sha}"
+            )
+    except Exception as exc:
+        return False, f"owned install identity error: {exc}"
+
+    return True, (
+        f"exact owned install closure: {len(expected_files)} files; identity={actual_root}"
+    )
 
 
 def run_diagnostics(installed_dir: str, prefix_dir: str | None = None, json_output: bool = False) -> int:
@@ -158,6 +296,7 @@ def run_diagnostics(installed_dir: str, prefix_dir: str | None = None, json_outp
     import_detail = ""
     try:
         sub_env = os.environ.copy()
+        sub_env["PYTHONDONTWRITEBYTECODE"] = "1"
         sub_env["PYTHONPATH"] = (
             f"{os.path.join(installed_dir, 'runtime')}:"
             f"{os.path.join(installed_dir, 'ux', 'japanese-human-layer')}"
@@ -252,6 +391,11 @@ def main(argv=None) -> int:
     parser.add_argument("--installed-dir", default=None, help="Installed version directory")
     parser.add_argument("--prefix", default=None, help="Installation prefix")
     parser.add_argument("--identity-only", action="store_true", help="Verify only explicit release bytes")
+    parser.add_argument(
+        "--owned-install-only",
+        action="store_true",
+        help="Verify release bytes and exact install closure for safe replacement",
+    )
     parser.add_argument("--json", action="store_true", help="Output results as JSON")
     args = parser.parse_args(argv)
 
@@ -267,6 +411,9 @@ def main(argv=None) -> int:
     if args.identity_only:
         passed, detail = verify_release_identity(os.path.abspath(installed_dir))
         return _print_summary([("Release Byte Identity", passed, detail)], args.json)
+    if args.owned_install_only:
+        passed, detail = verify_owned_install(os.path.abspath(installed_dir))
+        return _print_summary([("Owned Install Closure", passed, detail)], args.json)
     return run_diagnostics(installed_dir, prefix_dir=args.prefix, json_output=args.json)
 
 

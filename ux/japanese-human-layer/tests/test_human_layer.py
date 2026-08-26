@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-test_human_layer.py — Japanese Non-Engineer Layer Fixtures 受入テスト
-Case 1〜4 の動作要件（一括質問、権限分離、内部語彙隠蔽、WorkType別検証）を検証する。
+test_human_layer.py — Japanese Non-Engineer Layer reference fixture test
+Case 1〜4 のREFERENCE_ONLY設計期待が自己整合していることを検証する。
+実LLM挙動・runtime E2E・model supportの証拠にはしない。
 """
 
 import sys, os, json
@@ -26,6 +27,10 @@ def test_fixtures():
         wtype = exp["work_type"]
         clar = exp["clarification_needed"]
         vtype = exp["verification_type"]
+
+        assert exp.get("evidence_status") == "REFERENCE_ONLY", (
+            f"{cid} fixture must not be represented as live behavior evidence"
+        )
 
         print(f"🧪 [{cid}] Input: \"{raw}\"")
         print(f"   - Work Type:            {wtype}")

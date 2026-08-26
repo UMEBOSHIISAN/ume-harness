@@ -26,7 +26,8 @@ keywordマッチでカテゴリ分類してprune/keepする方式(UnknownCategor
 実測したが、3×10 Sampling Contractで両モデルともGate FAIL（whack-a-mole構造。
 表層の言い回しが毎trial微妙に変わり、keyword一致が追いつかない）。co独立レビュー
 2ラウンドを経て、Clarification Impact Contract v0 Rev.2（本ファイル）へ置換した。
-keyword方式のコードは削除済み（証跡は tests/evidence/ に恒久保全）。
+keyword方式のコードは削除済み。過去runの証跡は歴史文書で参照されるが、現行releaseには
+`tests/evidence/`のraw artifactを収録していないため、model supportの現行証拠には用いない。
 """
 
 from __future__ import annotations

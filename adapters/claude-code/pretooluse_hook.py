@@ -11,9 +11,12 @@ Contract:
 
 from __future__ import annotations
 
+import sys
+
+sys.dont_write_bytecode = True
+
 import json
 import os
-import sys
 
 _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _ADAPTER_DIR = os.path.join(_PKG_ROOT, "adapters", "claude-code")
@@ -45,6 +48,8 @@ def main() -> int:
         sys.stderr.write(f"[ume-harness pretooluse_hook] invalid JSON input: {e}\n")
         return 2
 
+    banner = ""
+
     # 1. Presentation-only Translation Konjac rendering.
     # This path never decides permission; the canonical gate below is evaluated independently.
     try:
@@ -54,16 +59,26 @@ def main() -> int:
         permission_mode = data.get("permission_mode", "auto")
         
         trans_res = konjac.translate_tool_event(tool_name, tool_input, cwd)
-        banner = konjac.format_user_banner(trans_res, permission_context=(permission_mode == "ask"))
-        if banner:
-            sys.stderr.write(banner)
+        # PermissionRequest systemMessage output is accepted by Claude Code but may be
+        # covered immediately by the interactive permission dialog.  Render the same
+        # detailed, presentation-only card during PreToolUse for any operation that is
+        # not read-only, without changing or pre-answering the host permission decision.
+        permission_context = (
+            permission_mode == "ask"
+            or trans_res.effect_level != konjac.EffectLevel.READ_ONLY
+        )
+        banner = konjac.format_user_banner(trans_res, permission_context=permission_context)
     except Exception:
-        sys.stderr.write(
+        banner = (
             "  ↳ 🇯🇵 ⚠️ この操作の日本語解説を生成できませんでした（影響: 未判定・技術表示をご確認ください）\n"
         )
 
     # 2. Canonical Safety Gate Evaluation
     exit_code, error_msg = runner.evaluate_invocation(data)
+    if exit_code == 0 and banner:
+        sys.stdout.write(json.dumps({"systemMessage": banner}, ensure_ascii=False) + "\n")
+    elif banner:
+        sys.stderr.write(banner)
     if error_msg:
         sys.stderr.write(error_msg)
     return exit_code

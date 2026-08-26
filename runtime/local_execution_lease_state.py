@@ -15,17 +15,23 @@ import fcntl
 import hashlib
 import json
 import os
+import re
 import tempfile
 import time
 import uuid
 from dataclasses import dataclass
 from typing import Any, Callable, Iterator
 
-from local_execution_lease import LocalExecutionLease
+from local_execution_lease import (
+    LEASE_VERSION,
+    LocalExecutionLease,
+    V0_CAPABILITY_CEILING,
+    compute_lease_identity,
+)
 
 
 LEASE_STATE_SCHEMA = "ume_harness.local_execution_leases.v0"
-LEASE_STATE_VERSION = 2
+LEASE_STATE_VERSION = 4
 DEFAULT_LEASE_TTL_SECONDS = 600
 STATE_FILENAME = "local_execution_leases.v0.json"
 LOCK_FILENAME = "local_execution_leases.v0.lock"
@@ -146,6 +152,8 @@ class LeaseRuntimeState:
     worktree_realpath: str
     branch: str
     starting_head: str
+    capabilities: frozenset[str]
+    test_profile: str | None
     worktree_key: str
     lifecycle: LeaseLifecycle
     lifecycle_history: tuple[LeaseLifecycle, ...]
@@ -259,7 +267,7 @@ def _transition_delta_digest(
     )
 
 
-def _state_payload(state: LeaseRuntimeState) -> dict[str, Any]:
+def _state_record_payload(state: LeaseRuntimeState) -> dict[str, Any]:
     return {
         "lease_id": state.lease_id,
         "task_id": state.task_id,
@@ -270,6 +278,8 @@ def _state_payload(state: LeaseRuntimeState) -> dict[str, Any]:
         "worktree_realpath": state.worktree_realpath,
         "branch": state.branch,
         "starting_head": state.starting_head,
+        "capabilities": sorted(state.capabilities),
+        "test_profile": state.test_profile,
         "worktree_key": state.worktree_key,
         "lifecycle": state.lifecycle.value,
         "lifecycle_history": [entry.value for entry in state.lifecycle_history],
@@ -283,6 +293,14 @@ def _state_payload(state: LeaseRuntimeState) -> dict[str, Any]:
         "open_operation_started_at": state.open_operation_started_at,
         "terminal_reason": state.terminal_reason,
     }
+
+
+def _state_payload(state: LeaseRuntimeState) -> dict[str, Any]:
+    payload = _state_record_payload(state)
+    payload["record_digest"] = _canonical_digest(
+        {"kind": "lease-runtime-state", "record": payload}
+    )
+    return payload
 
 
 def _state_from_payload(payload: object) -> LeaseRuntimeState:
@@ -309,6 +327,13 @@ def _state_from_payload(payload: object) -> LeaseRuntimeState:
             status_digest=expected_payload["status_digest"],
             tree_digest=expected_payload["tree_digest"],
         )
+        capabilities_payload = payload["capabilities"]
+        if not isinstance(capabilities_payload, list):
+            raise LeaseStateCorruptError("capabilities must be a list")
+        if len(capabilities_payload) != len(set(capabilities_payload)):
+            raise LeaseStateCorruptError("capabilities contain duplicates")
+        capabilities = frozenset(capabilities_payload)
+        record_digest = payload["record_digest"]
         state = LeaseRuntimeState(
             lease_id=payload["lease_id"],
             task_id=payload["task_id"],
@@ -319,6 +344,8 @@ def _state_from_payload(payload: object) -> LeaseRuntimeState:
             worktree_realpath=payload["worktree_realpath"],
             branch=payload["branch"],
             starting_head=payload["starting_head"],
+            capabilities=capabilities,
+            test_profile=payload["test_profile"],
             worktree_key=payload["worktree_key"],
             lifecycle=lifecycle,
             lifecycle_history=lifecycle_history,
@@ -349,6 +376,18 @@ def _state_from_payload(payload: object) -> LeaseRuntimeState:
         _require_digest("policy_sha256", state.policy_sha256, 64)
         _require_digest("starting_head", state.starting_head, 40)
         _require_digest("delta_chain_digest", state.delta_chain_digest, 64)
+        _require_digest("record_digest", record_digest, 64)
+        if any(not isinstance(capability, str) or not capability for capability in state.capabilities):
+            raise LeaseStateCorruptError("capabilities contain an invalid name")
+        if state.capabilities - V0_CAPABILITY_CEILING:
+            raise LeaseStateCorruptError("capabilities exceed the V0 ceiling")
+        if state.test_profile is not None and (
+            not isinstance(state.test_profile, str)
+            or re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", state.test_profile) is None
+        ):
+            raise LeaseStateCorruptError("test_profile is invalid")
+        if ("test" in state.capabilities) != (state.test_profile is not None):
+            raise LeaseStateCorruptError("test capability/profile binding is invalid")
         expected_worktree_key = _canonical_digest(
             {"repository": state.repository, "worktree_realpath": state.worktree_realpath}
         )
@@ -369,6 +408,30 @@ def _state_from_payload(payload: object) -> LeaseRuntimeState:
             raise LeaseStateCorruptError("baseline anchor head mismatch")
         if state.expected_execution_state.starting_head != state.starting_head:
             raise LeaseStateCorruptError("expected state head mismatch")
+        persisted_lease = LocalExecutionLease(
+            lease_id=state.lease_id,
+            lease_version=LEASE_VERSION,
+            task_id=state.task_id,
+            task_contract_sha256=state.task_contract_sha256,
+            policy_id=state.policy_id,
+            policy_sha256=state.policy_sha256,
+            repository=state.repository,
+            worktree_realpath=state.worktree_realpath,
+            branch=state.branch,
+            starting_head=state.starting_head,
+            baseline_status_digest=state.baseline_anchor.status_digest,
+            baseline_tree_digest=state.baseline_anchor.tree_digest,
+            capabilities=state.capabilities,
+            test_profile=state.test_profile,
+            external_mutations=False,
+        )
+        if compute_lease_identity(persisted_lease) != state.lease_id:
+            raise LeaseStateCorruptError("lease identity mismatch")
+        expected_record_digest = _canonical_digest(
+            {"kind": "lease-runtime-state", "record": _state_record_payload(state)}
+        )
+        if record_digest != expected_record_digest:
+            raise LeaseStateCorruptError("record integrity mismatch")
         if state.lifecycle in _TERMINAL and state.open_operation_id is not None:
             raise LeaseStateCorruptError("terminal lease cannot have an open operation")
         if state.open_operation_id is None and state.open_operation_started_at is not None:
@@ -630,6 +693,8 @@ class LeaseStateStore:
                 worktree_realpath=lease.worktree_realpath,
                 branch=lease.branch,
                 starting_head=lease.starting_head,
+                capabilities=lease.capabilities,
+                test_profile=lease.test_profile,
                 worktree_key=worktree_key,
                 lifecycle=LeaseLifecycle.ISSUED,
                 lifecycle_history=(LeaseLifecycle.ISSUED,),

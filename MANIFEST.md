@@ -96,14 +96,14 @@ Claude hooks, and the common-language pack and schema.
 
 ## Verification
 
-Measured against these final-freeze bytes:
+Measured against these corrective-candidate bytes:
 
 ```
 python3 tests/test_portable_core.py           -> 40 passed, 0 failed
 python3 tests/test_human_layer_adapter.py     -> 42 passed, 0 failed
 python3 tests/test_cli.py                     -> 13 passed, 0 failed
-python3 tests/test_claude_code_adapter.py     -> 51 passed, 0 failed
-pytest -q tests ux/japanese-human-layer/tests -> 244 passed, 7 subtests passed
+python3 tests/test_claude_code_adapter.py     -> 347 passed, 0 failed
+pytest -q tests ux/japanese-human-layer/tests -> 291 passed, 7 subtests passed
 ```
 
 `tests/test_release_lifecycle.py` covers install → setup → offline use → byte

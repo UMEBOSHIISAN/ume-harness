@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """runtime/common_language_pack.py — Standard Japanese Language Pack Loader.
 
-Loads versioned, schema-validated JSON language packs from common-language/packs/ja-JP/.
-Provides decoupled text templates without hardcoding within parser logic.
+Loads a versioned JSON language pack from common-language/packs/ja-JP/ and performs
+the loader's minimal object/``concepts`` shape check. The distributable JSON Schema
+is a separate contract; this loader does not perform full schema validation.
 """
 
 from __future__ import annotations

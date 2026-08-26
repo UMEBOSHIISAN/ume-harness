@@ -5,14 +5,27 @@ Claude Code と ume-harness Safety Core & Auto Translation Konjac を接続す�
 ## 提供フック一覧
 
 1. **`PreToolUse` (`pretooluse_hook.py`)**
-   - ツール実行直前にプッシュ型で日本語意味訳を自動表示します。
-   - Safety Core (Lease Gate / Tool Policy) による自律停止・実行ゲート評価を実施します。
+   - ツール実行直前の日本語意味訳をClaude hookのstructured `systemMessage`として返します。
+   - Safety Core (Lease Gate / Tool Policy) によるtool単位のallow/block評価を実施します。
 
 2. **`PermissionRequest` (`permission_request_hook.py`)**
-   - ユーザーへ手動許可プロンプトが表示される直前に、構造化された詳細解説バナーを表示します。
+   - ユーザーへ手動許可プロンプトが表示される直前に、structured `systemMessage`と
+     公式`terminalSequence`通知で詳細解説を提示します。どちらもPresentation-onlyで、
+     許可・拒否・askのdecisionは返しません。
 
 3. **`PostToolUseFailure` (`posttooluse_failure_hook.py`)**
-   - コマンドやツールの実行が失敗した際に、過度な安心感を与えず事実に基づくトラブルシューティング案内を表示します。
+   - コマンドやツールの実行が失敗した際に、`systemMessage`と`additionalContext`で
+     過度な安心感を与えない事実ベースの案内を返します。
+
+3本のstructured outputとPreToolUse deny（exit 2）はstatic adapter test済みです。
+ただしexact candidate bytesでのphysical Claude UI 3-hook E2Eは別のrelease Gateであり、
+単体テストだけをlive表示証拠へ昇格させません。Translation KonjacはPresentation-onlyで、
+失敗してもcanonical Safety Gateの評価をskipしません。
+
+`LeaseStateStore`のexpected-state / concurrent / out-of-band mutation primitiveはClaude hostの
+operation begin/completeには未結線です。Autonomous Stopもpredicateのみで、Stop hookはありません。
+Lease stateは`test` capabilityと`test_profile`も保持しますが、profileを実行可能コマンドへ
+変換するhost mappingはありません。したがってtest-only Leaseは任意のBashを許可しません。
 
 ## 設定方法
 

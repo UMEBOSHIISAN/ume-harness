@@ -37,26 +37,31 @@ def get_adapter_hook_paths(pkg_root: str) -> Dict[str, str]:
     }
 
 
-def render_cli_wrapper(pkg_root: str) -> str:
+def render_cli_wrapper(pkg_root: str, *, bytecode_safe: bool = True) -> str:
     cli_path = os.path.join(os.path.abspath(pkg_root), "bin", "ume-harness")
     quoted_cli_path = shlex.quote(cli_path)
+    python_args = "python3 -B" if bytecode_safe else "python3"
     return (
         "#!/usr/bin/env bash\n"
         "# ume-harness launcher wrapper\n"
-        f'exec python3 {quoted_cli_path} "$@"\n'
+        f'exec {python_args} {quoted_cli_path} "$@"\n'
     )
 
 
 def cli_wrapper_is_owned(wrapper_path: str, pkg_root: str) -> bool:
     try:
-        mode = os.lstat(wrapper_path).st_mode
-        if not stat.S_ISREG(mode):
+        metadata = os.lstat(wrapper_path)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
             return False
         with open(wrapper_path, "rb") as f:
             actual = f.read()
     except OSError:
         return False
-    return actual == render_cli_wrapper(pkg_root).encode("utf-8")
+    owned_variants = (
+        render_cli_wrapper(pkg_root).encode("utf-8"),
+        render_cli_wrapper(pkg_root, bytecode_safe=False).encode("utf-8"),
+    )
+    return actual in owned_variants
 
 
 def generate_preview(settings_path: str, hook_paths: Dict[str, str]) -> str:

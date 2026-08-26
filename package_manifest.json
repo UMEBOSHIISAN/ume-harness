@@ -1,19 +1,21 @@
 {
   "name": "ume-harness",
   "version": "0.1.0",
-  "description": "Portable local-execution policy / HOST_ADAPTER (local Authority Overlay + Clarification Impact Contract) with a Japanese Human Layer and Presentation-only Translation Konjac; canonical external Action Authority is owned by Mothership. Validated against Claude Sonnet 5 (v0); Gemma support deferred (see status).",
+  "description": "Portable local-execution policy / HOST_ADAPTER (local Authority Overlay + Clarification Impact Contract) with a Japanese Human Layer and Presentation-only Translation Konjac; canonical external Action Authority is owned by Mothership. The CLI is configured for Claude Sonnet 5; model semantics and physical Claude hook support have separate evidence boundaries (see SUPPORT_MATRIX.md).",
   "license": "MIT",
   "repository": "https://github.com/UMEBOSHIISAN/ume-harness-engineering",
   "status": {
-    "supported_models_v0": [
+    "configured_models_v0": [
       "claude-sonnet-5"
     ],
     "deferred_models": [
       "gemma4:12b-it-qat"
     ],
-    "deferred_reason": "Semantic Gate (Case1 v2 Sampling Contract) measured pooled PRUNABLE_PRESENT=93.3% for Gemma vs 0.0% for Claude. Not a Structural Gate defect; tracked as a future ticket.",
-    "note": "bin/ume-harness is the single implemented CLI entrypoint. setup connects exactly three canonical Claude hook commands; setup --disconnect and uninstall remove only those exact commands. install, identity verification, disconnect, and uninstall are covered by the isolated lifecycle test.",
-    "portability_trial": "ISOLATED_LIFECYCLE_REPRODUCIBLE — install, setup, offline use, byte verification, disconnect, and uninstall are mechanically asserted in tests/test_release_lifecycle.py."
+    "deferred_reason": "Gemma has no v0 CLI route. Historical semantic runs are recorded in PHASE4_HOLD.md, but their raw evidence is not in the current release closure, so no current numeric model-performance claim is made.",
+    "semantic_evidence": "CURRENT_RELEASE_GRADE_RESULT_UNKNOWN — tests/case1_v2_sampling_contract.md defines the measurement contract; fresh raw evidence is required for a new support claim.",
+    "claude_host_evidence": "STATIC_ADAPTER_TESTED / PHYSICAL_3HOOK_E2E_PENDING — test-profile command mapping, expected-state/out-of-band, and autonomous Stop host wiring are not implemented.",
+    "note": "bin/ume-harness is the single implemented CLI preview entrypoint. setup connects exactly three canonical Claude hook commands; setup --disconnect and uninstall remove only those exact commands. install, identity verification, disconnect, and uninstall are covered by the isolated lifecycle test.",
+    "portability_trial": "macOS arm64 isolated lifecycle demonstrated; Linux/POSIX expected but unverified; Windows native unsupported."
   },
   "release_identity": {
     "algorithm": "sha256-canonical-path-map-v1",

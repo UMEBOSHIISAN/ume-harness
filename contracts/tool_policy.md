@@ -43,34 +43,38 @@ unknown side-effect      → stop（人間に確認）
 
 ## LocalExecutionLease V0 overlay
 
-`LOCAL_EXECUTION_LEASE_V0` は `IMPLEMENTED / ENFORCED` であり、Portable Coreおよび
-Claude Code アダプタ（`lease_gate_runner.py`）において作業ツリー内外の判定overlayとして稼働している。
+`LOCAL_EXECUTION_LEASE_V0` のCore、persisted capability ceiling、path/Tier判定、
+および作業ツリー内外のpre-operation overlayは実装・テスト済みであり、Claude Code
+`PreToolUse`（`lease_gate_runner.py`）へ結線されている。observer駆動のexpected-state /
+concurrent / out-of-band mutation検知はCoreに実装済みだがClaude hostには未結線である。
 
 ### Ownership boundary
 
-このTool Policyはlocal executionのallow / approval-required / deny判定だけを所有する。
-HumanIntent、canonical task contract、Evidence、Verification、Approval、Receipt、
-External Action Authorityの意味論を所有または複製しない。
+このTool Policyは、Harness-ownedなlocal executionのallow / approval-required / deny semanticsを
+所有する。判定に用いるtask identityやdigestはbounded local task referenceであり、Harnessが
+所有するlocal work-intake / task / preflight semanticsの範囲だけで解釈する。
 
-判定入力に含められるtask identityやdigestは、Agent Frontdoor / WGMが所有するcanonical
-contractへの参照としてのみ扱う。Tool Policy自身がtask scopeを再構成したり、検証済みと
-いうラベルを発行したり、外部authorityへ昇格させたりしてはならない。
+外部からcompatible referenceが供給される場合、その参照データは外部providerが所有する
+input metadataのままである。Tool Policyはそれを外部authorityへ昇格させず、外部の
+Evidence、Verification、Approval、Receiptの意味論を複製しない。
 
-Frontdoorはtask boundary、WGMはevidence / verification relationship、Mothershipは
-Decision / External Action Authority、host gateはenforcementを所有する。ume-harnessの
-provider adapterはこれらを接続するだけで、別のSSOTを作らない。
+consequential Decision / External Action AuthorityはHarnessの外部にあり、Mothershipが所有する。
+host gateはHarness-ownedなlocal policyのenforcementを所有する。provider adapterや
+LocalExecutionLeaseは、consequential authorityを生成・再解釈・伝播しない。
 
 `ACTIVE` 化後に限り、validな `LocalExecutionLease` が以下をすべて満たす場合、
-Leaseにbindされたworktree内のbounded repository-local edit/createとapproved constrained
-testについて、`TIER_RUNTIME_CODE` の既定の `APPROVAL_REQUIRED` を、Leaseのcapability ceiling
-の範囲内で `ALLOW` に投影できる。
+Leaseにbindされたworktree内のbounded repository-local edit/createについて、
+`TIER_RUNTIME_CODE` の既定の `APPROVAL_REQUIRED` を、persisted `edit` capabilityの範囲内で
+`ALLOW` に投影できる。Coreは`test` capabilityと`test_profile`も導出・保存するが、現行Claude
+adapterにはprofileから許可commandへ変換するhost mappingがない。test-only Leaseは任意Bashを
+許可せず、未知のtest commandは`APPROVAL_REQUIRED`を維持する。
 
-- canonical task contract digestが一致する
+- bounded local task reference digestが一致する
 - repository / worktree realpath / branch / starting HEADが一致する
-- baseline anchorとcurrent expected execution stateが整合する
+- baseline anchorがstate schema上で整合する
 - expiry / lifecycle / revocationが有効である
 - protected-zone policyに違反しない
-- concurrent / out-of-band mutationが検出されていない
+- persisted capability ceilingが要求operationを許可する
 
 validなLeaseが存在しない、または一つでも検証に失敗した場合は、既存の
 `APPROVAL_REQUIRED` または `DENY` のfail-closed判定を維持する。Leaseは削除、stage、commit、
@@ -80,10 +84,15 @@ validなLeaseが存在しない、または一つでも検証に失敗した場�
 Human AuthorityでもExternal Action Authorityでもない。PreparationまたはLeaseの成功は、
 push、PR creation、PR merge、deploy、publish、sendの承認へ伝播しない。
 
-Phase 1〜3の実装完了に伴い、task / policy / runtime contextのbinding、V0 capability ceiling、
-expiry / lifecycle / revoke、protected-zone、current expected execution state、concurrent / out-of-band mutation
-検知、およびhost gate enforcement（`pretooluse_hook.py`）が決定論的に機能し、
-有効な `LocalExecutionLease` の存在下でのみ安全なローカル編集を許可する。
+task / policy / runtime contextのbinding、persisted V0 capability ceiling、expiry / lifecycle /
+revoke、protected-zone、path/Tier、およびpre-operation host gate（`pretooluse_hook.py`）は
+決定論的に機能し、有効な`edit` capabilityを持つ`LocalExecutionLease`の存在下でのみ
+managed runtime codeのローカル編集を許可する。
+
+`LeaseStateStore.begin_operation()` / `complete_operation()`が提供するcurrent expected execution
+stateとconcurrent / out-of-band mutation検知は、trusted observerをbindしたCoreテストでは
+機能する。現行Claude adapterはそのoperation lifecycleを呼び出さないため、Claude host上では
+`NOT WIRED / EXPERIMENTAL`であり、v0のhost enforcement claimには含めない。
 
 ## Portable / Drop / Adapter-only の対応（監査結果の反映）
 

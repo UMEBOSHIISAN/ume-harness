@@ -10,7 +10,8 @@ Human → 日本語で依頼 → このCLI → Harness(intent_interpreter + huma
   - 内部語彙（ux/japanese-human-layer/contracts/human_request_contract.md §3の
     禁止語彙）を画面に一切出さない。
 
-対応モデル: Claude Sonnet 5のみ（SUPPORT_MATRIX.md参照）。`claude` CLIが必要。
+configured model route: Claude Sonnet 5（support evidence boundaryはSUPPORT_MATRIX.md参照）。
+`claude` CLIが必要。
 オフラインテスト用に --llm-output-file で既存のLLM出力JSONを直接読み込むモードもある
 （このモードは `claude` CLI不要・API呼び出しなし）。
 
@@ -20,12 +21,15 @@ Core semantics（tool_policy.py / human_layer_adapter.pyの決定ロジック）
 
 from __future__ import annotations
 
+import sys
+
+sys.dont_write_bytecode = True
+
 import argparse
 import json
 import os
 import re
 import subprocess
-import sys
 
 _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _RUNTIME = os.path.join(_PKG_ROOT, "runtime")
@@ -63,7 +67,7 @@ def build_intent_prompt(raw_request: str, workspace_context: str) -> str:
 
 def call_claude_for_interpretation(raw_request: str, workspace_context: str) -> dict:
     """`claude -p --model sonnet` を呼び、intent_interpreter.mdスキーマのJSONを得る。
-    唯一の対応モデル（SUPPORT_MATRIX.md）。他モデルでの動作は保証しない。"""
+    これはv0で唯一configuredなmodel routeであり、精度保証を意味しない。"""
     prompt = build_intent_prompt(raw_request, workspace_context)
     proc = subprocess.run(
         ["claude", "-p", "--model", "sonnet", "--output-format", "json", prompt],
@@ -86,8 +90,9 @@ def call_claude_for_interpretation(raw_request: str, workspace_context: str) -> 
 
 def render_report(result: hla.NormalizedInterpretation) -> tuple[str, str]:
     """(表示テキスト, headline_state) を返す。
-    headline_state は "HELD" | "ASK" | "APPROVAL_REQUIRED" | "DONE" のいずれか
-    （優先順位: HELD > ASK > APPROVAL_REQUIRED > DONE）。"""
+    headline_state は
+    "HELD" | "ASK" | "APPROVAL_REQUIRED" | "PREVIEW_COMPLETE" のいずれか
+    （優先順位: HELD > ASK > APPROVAL_REQUIRED > PREVIEW_COMPLETE）。"""
     lines = []
     lines.append("━" * 32)
     lines.append("📋 依頼の内容整理")
@@ -139,12 +144,12 @@ def render_report(result: hla.NormalizedInterpretation) -> tuple[str, str]:
     elif result.required_human_approvals:
         headline = "APPROVAL_REQUIRED"
     else:
-        headline = "DONE"
+        headline = "PREVIEW_COMPLETE"
 
     return "\n".join(lines), headline
 
 
-_EXIT_CODES = {"DONE": 0, "ASK": 1, "APPROVAL_REQUIRED": 2, "HELD": 3}
+_EXIT_CODES = {"PREVIEW_COMPLETE": 0, "ASK": 1, "APPROVAL_REQUIRED": 2, "HELD": 3}
 
 
 import hook_setup_service as hss  # noqa: E402
@@ -193,7 +198,7 @@ def handle_setup_command(argv: list[str]) -> int:
     ok, msg = hss.install_hooks_to_settings(_PKG_ROOT, target_path)
     if ok:
         print(f"\n✅ {msg}")
-        print("🎉 これで Claude Code を起動すると、自動的に日本語通訳が常駐します！")
+        print("3つの日本語解説フックを接続しました。実際の表示は各hookの発火時に確認できます。")
         return 0
     else:
         print(f"\n❌ {msg}", file=sys.stderr)
@@ -209,7 +214,7 @@ def main(argv=None) -> int:
 
     parser = argparse.ArgumentParser(
         prog="ume-harness",
-        description="日本語の曖昧な依頼を、Authority Overlay + Clarification Impact Contractで判定するCLI（v0・Claude Sonnet 5対応）。",
+        description="日本語の曖昧な依頼を、Authority Overlay + Clarification Impact ContractでpreviewするCLI（v0・Claude Sonnet 5 route）。",
     )
     parser.add_argument("request", nargs="?", help="日本語の依頼文（例: 'この資料まとめといて'）")
     parser.add_argument("--request", dest="request_flag", help="依頼文（位置引数の代わりに使用可）")

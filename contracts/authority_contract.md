@@ -6,14 +6,23 @@
 > rules (Rule-1〜6). Only the tier default for runtime code and the token surface were adjusted
 > for portability (see §3, §4).
 
-> **LOCAL_EXECUTION_LEASE_V0 state:** `IMPLEMENTED / ENFORCED`
+> **LOCAL_EXECUTION_LEASE_V0 state:** `CORE IMPLEMENTED / CLAUDE PRETOOLUSE PARTIALLY WIRED`
 >
-> Local execution lease verification and worktree boundary enforcement are
-> active in the portable runtime and Claude Code adapter.
+> Lease derivation, capability persistence, lifecycle state, path-to-Tier resolution,
+> and worktree boundary enforcement are implemented and tested. The Claude Code
+> `PreToolUse` adapter wires path/Tier, persisted `edit` capability, and worktree checks.
+> Persisted `test` / `test_profile` has no Claude command-profile mapping and therefore
+> does not authorize arbitrary Bash commands. The
+> observer-driven expected-state / concurrent / out-of-band transition machinery
+> exists in `LeaseStateStore`, but is not wired into the Claude host lifecycle.
 >
 > **Threat Model & Trust Prerequisite:**
 > - Installed host entrypoint (`pretooluse_hook.py`) is a **trusted host prerequisite**.
 > - Arbitrary / manual same-UID replacement of the installed entrypoint file itself is **OUT OF SCOPE**.
+> - Persisted Lease records bind lifecycle and capability fields into a record digest for corruption
+>   detection. This is not a cryptographic boundary against an adversarial same-UID process that can
+>   rewrite the state file and recompute public digests; the secured local account/state directory is
+>   a trusted host prerequisite.
 > - Closure verification enforces runtime artifact integrity under this trusted entrypoint assumption.
 
 ## Rule-1〜6（そのまま採用・原文がすでに汎用だった）
@@ -35,31 +44,36 @@
 
 ## §2.5 Local Workspace Preparation / Local Execution Lease V0
 
-本節のPolicyは `IMPLEMENTED / ENFORCED` であり、Portable CoreおよびClaude Codeアダプタにおいて
-作業ツリー境界・ファイル操作制御として有効化されている。
+本節のPolicy、Lease導出・状態primitive、capability ceiling、および作業ツリー境界・
+path/Tier制御は実装・テスト済みである。Claude Codeアダプタでは`PreToolUse`時の
+persisted `edit` capability / path / worktree判定が結線されている。`test` capabilityと
+`test_profile`はstateへ保存されるが、Claude command-profile mappingは未結線である。
+`LeaseStateStore`のobserver駆動
+expected-state / concurrent / out-of-band検知は実装・単体テスト済みだが、Claude hostの
+operation begin/complete lifecycleには未結線（experimental）である。
 
 ### Ownership boundary (P0 prerequisite)
 
-このPolicyは、既存のcanonical contractをume-harness内に複製しない。
+ume-harnessは、自身のLocal Work Planeにおけるsemantic ownerである。
 
-- Agent Frontdoorが `HumanIntent` のtask境界とcanonical task contractを所有する。
-- Workflow Governance Model (WGM) がEvidence、Claim、Action Proposal、Approval、Execution Receipt、Verificationの関係を所有する。WGMは実行エンジンではない。
-- Mothership Routerはadvisory routing / dry-run manifestだけを所有し、authorityやexecutionを生成しない。
-- MothershipはDecision SurfaceとExternal Action Authorityの境界を所有するが、local worker executionを所有しない。
-- ume-harnessはcanonical task/evidence/verification/authority contractの所有者ではなく、canonical task boundaryを参照してlocal workspaceとlocal executionを制御する。
-- host gateはruntime enforcementを行い、Claude/Codex adapterは接続形式だけを担当する。どちらもcanonical semanticsを定義しない。
+- ume-harnessはlocal work-intake、bounded local task / preflight、clarification / confirmation batching、candidate local-action classification、local execution policy、LocalExecutionLease、worktree / tool enforcement、およびlocal verification factsを所有する。
+- 外部から互換性のためにtask identityやdigestが供給される場合、それらはbounded local task referenceとして扱うinput metadataに限られ、Harness内の新しいSSOTにはならない。外部供給データ自体の所有権も移転しない。
+- Agent Frontdoorのようなhistorical external producerはcompatible referenceを供給できるが、Harness runtimeはAgent Frontdoorを必要としない。
+- historicalなWorkflow Governance Model (WGM) / Mothership Routerとの関係はcompatibility / historyであり、現在のtop-level architectureやruntime dependencyではない。
+- Mothershipはconsequential Decision SurfaceとExternal Action Authorityの境界を所有するが、local worker executionを所有しない。
+- External bounded executorはactual external effectとreceipt / verification evidenceの生成を担う。Mothershipによるpost-action evidenceの受領・照合・検証は、現行runtime behaviorとして本契約ではclaimしない。
+- host gateはHarness-owned local semanticsをruntimeでenforceし、Claude/Codex adapterは接続形式だけを担当する。どちらもLocalExecutionLeaseから外部authorityを生成・伝播しない。
 
-ume-harnessはFrontdoor/WGMが発行・検証したtask identityとdigestを参照できるが、
-独自のTaskContract、Verification、Approval、Receipt、External Authorityを発行・再定義してはならない。
-Local Execution Leaseのbind対象はcanonical taskへの参照であり、新しいtask SSOTではない。
+LocalExecutionLeaseのbind対象はvalidated bounded local task identityへの参照であり、
+新しいtask SSOTでも、Mothershipのconsequential authorityでもない。
 
 ### Local Workspace Preparation
 
 `LocalWorkspacePreparation` は Human Authority ではない。明示された
-canonical task boundary（Frontdoorのtask identity / contract digestと、必要なWGMの
-validated context）から機械的に導出され、Lease発行前の隔離された作業環境だけを準備する。
+bounded local task identity / referenceと、必要なlocal policy / runtime contextから
+機械的に導出され、Lease発行前の隔離された作業環境だけを準備する。
 
-許可されるのは、canonical task referenceにbindされた以下のlocal操作だけである。
+許可されるのは、bounded local task referenceにbindされた以下のlocal操作だけである。
 
 - exact base commitからの新規local branch作成
 - そのbranch用のisolated worktree作成
@@ -76,11 +90,13 @@ push、PR、merge、deploy、publish、sendも許可しない。
 
 ### Local Execution Lease
 
-`LocalExecutionLease` は Human Authority ではない。canonical task reference、repository、
+`LocalExecutionLease` は Human Authority ではない。bounded local task reference、repository、
 worktree realpath、branch、starting HEAD、baseline anchor、capability ceiling、
 protected-zone policy、expiryに対する機械導出capabilityである。
 
-V0で許可されるのは、bounded repository-local edit/createとapproved constrained testのみ。
+V0 capability ceilingが表現するのはbounded repository-local edit/createとapproved constrained
+testのみである。現行Claude hostがLeaseによって自動許可へ投影するのは`edit` capabilityだけで、
+`test_profile`を具体的なcommand allowlistへ変換する経路は未結線である。
 Leaseは、Policyで禁止されたcapabilityを追加できず、別worktreeへ移行できず、期限を自動延長できない。
 Lease、Preparation結果、local execution成功、receipt、AI review結果のいずれも、
 External Action Authorityを構成しない。
@@ -125,7 +141,7 @@ DEPLOY_APPROVED:<target>
 AUTONOMY_APPROVED:<class>:<level>:<review_date>
 ```
 
-### Human UX → Canonical Token 変換フロー
+### Human UX → Canonical Token 変換フロー（アーキテクチャ境界）
 
 ```
 人間向け自然語 approval（例:「このファイルを変更して進めますか？」[進める][やめる]）
@@ -136,7 +152,9 @@ Core（tool_policy.py）が検証・消費
 ```
 
 Core 自体はトークン文字列の生成・検証・消費のみを扱う。自然語⇄トークンの変換は
-必ず UX アダプタ層の責務とする（Core に自然語処理ロジックを混ぜない）。
+必ず UX アダプタ層の責務とする（Core に自然語処理ロジックを混ぜない）。現行Claude
+adapterは`APPROVAL_REQUIRED`をblockするが、承認tokenの発行・消費から同一operationを
+再開するend-to-end経路は未結線である。Human approvalだけを実行能力として扱ってはならない。
 
 ## §5 Token データモデル
 
@@ -155,7 +173,11 @@ Core 自体はトークン文字列の生成・検証・消費のみを扱う。
 
 ## §6 Adoption / Activation Gate
 
-`LocalExecutionLease` の導出（Phase 1）、状態管理（Phase 2: `LeaseStateStore`）、
-および作業ツリー境界・コントロールプレーン防護（Phase 3: `LocalExecutionGate` / `LeaseGateRunner`）は
-実装および単体・結合テスト済みであり、`IMPLEMENTED / ENFORCED` として稼働する。
-自動 worktree プロビジョニング等の拡張は次期マイルストーンとして分離されている。
+`LocalExecutionLease` の導出、状態管理（`LeaseStateStore`）、capability ceiling、
+および作業ツリー境界・コントロールプレーン・path/Tier防護
+（`LocalExecutionGate` / `LeaseGateRunner`）は実装および単体・結合テスト済みである。
+Claude `PreToolUse`にはこれらのpre-operation判定が結線されている。一方、trusted observerを
+用いたoperation begin/complete、expected-state更新、concurrent / out-of-band mutation検知は
+Core primitiveとして実装済みだがClaude hostには未結線であり、enforcement claimに含めない。
+`activation_updater.py`も実装済みの手動primitiveであり、`setup`は`activation.json`を作成しない。
+アダプタのclosure検証は既存の有効なactivation stateがある場合だけ実行される。

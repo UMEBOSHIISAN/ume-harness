@@ -5,7 +5,9 @@ This module owns the generic, host-independent 3-value decision evaluation
 (ALLOW / DENY / NOT_APPLICABLE) for bounded execution requests.
 
 Invariants:
-- Does NOT own task semantics (Frontdoor) or authority SSOT (Mothership).
+- Evaluates bounded requests under Harness-owned local task and execution-policy semantics.
+- Does not create or propagate external governance evidence or consequential external
+  authority; consequential authority belongs to Mothership.
 - Does NOT hardcode site policies or protected zones (consumed via policy evaluator).
 - Prevents managed-domain fallback leaks (managed domain + no lease => DENY).
 - Caller cannot supply or override worktree identity (derived via domain resolver).
@@ -237,11 +239,25 @@ class LocalExecutionGate:
                 violation_code="CONTEXT_BINDING_MISMATCH",
             )
 
+        active_capabilities = frozenset(active_state.get("capabilities", ()))
+        if normalized_action in (GateAction.EDIT, GateAction.WRITE) and "edit" not in active_capabilities:
+            return GateEvaluationResult(
+                decision=GateDecision.DENY,
+                reason="active lease does not grant the edit capability",
+                lease_id=lease_id,
+                violation_code="LEASE_CAPABILITY_DENIED",
+            )
+
         # 6. Site Policy evaluation (delegated to policy_evaluator)
         policy_ref = PolicyReference(
             policy_id=domain.policy_id,
             policy_sha256=domain.policy_sha256,
-            allowed_capabilities=frozenset({"edit", "test"}),
+            allowed_capabilities=active_capabilities,
+            approved_test_profiles=(
+                frozenset({active_state["test_profile"]})
+                if active_state.get("test_profile") is not None
+                else frozenset()
+            ),
         )
 
         try:

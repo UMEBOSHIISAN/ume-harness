@@ -4,7 +4,7 @@ test_cli.py — bin/ume-harness の静的テスト（P0-1・Usability Closure）
 
 LLM呼び出しを一切行わない（--llm-output-file相当の直接関数呼び出しのみ）。
 render_report()の決定論的レンダリングと、headline_state導出の優先順位
-（HELD > ASK > APPROVAL_REQUIRED > DONE）を検証する。
+（HELD > ASK > APPROVAL_REQUIRED > PREVIEW_COMPLETE）を検証する。
 内部語彙（human_request_contract.md §3禁止リスト）が出力に含まれないことも検証する。
 """
 
@@ -48,15 +48,15 @@ FORBIDDEN_VOCAB = [
 ]
 
 
-def test_done_state_when_nothing_needs_approval():
-    print("\n[headline] 質問なし・承認不要 → DONE")
+def test_preview_complete_state_when_nothing_needs_approval():
+    print("\n[headline] 質問なし・承認不要 → PREVIEW_COMPLETE")
     llm_output = {
         "work_type": "RESEARCH", "inferred_intent": "x", "inferred_deliverable": "x",
         "candidate_actions": ["資料を確認する"], "clarification_assessments": [],
     }
     result = hla.normalize(llm_output, tier=tp.Tier.TIER_NORMAL)
     report, headline = cli.render_report(result)
-    check("headline == DONE", headline == "DONE", f"got {headline}")
+    check("headline == PREVIEW_COMPLETE", headline == "PREVIEW_COMPLETE", f"got {headline}")
     check("exit code 0", cli._EXIT_CODES[headline] == 0)
 
 
@@ -139,14 +139,14 @@ def test_cli_end_to_end_offline_via_subprocess():
             [sys.executable, _CLI_PATH, "--llm-output-file", temp_path],
             capture_output=True, text=True,
         )
-        check("exit code 0（DONE）", proc.returncode == 0, f"got {proc.returncode} stderr={proc.stderr[:200]}")
+        check("exit code 0（PREVIEW_COMPLETE）", proc.returncode == 0, f"got {proc.returncode} stderr={proc.stderr[:200]}")
         check("自然語レポートが出力される", "依頼の内容整理" in proc.stdout)
     finally:
         os.unlink(temp_path)
 
 
 def main():
-    test_done_state_when_nothing_needs_approval()
+    test_preview_complete_state_when_nothing_needs_approval()
     test_ask_state_takes_priority_over_approval_required()
     test_approval_required_state_when_only_approvals_pending()
     test_held_state_when_clarification_structurally_blocked()

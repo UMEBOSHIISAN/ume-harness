@@ -136,6 +136,41 @@ class LocalExecutionGateTests(unittest.TestCase):
         self.assertEqual(result.lease_id, lease.lease_id)
         self.assertIn("permitted", result.reason)
 
+    def test_test_only_lease_cannot_authorize_edit(self) -> None:
+        task = CanonicalTaskReference(
+            task_id=self.task_id,
+            task_contract_sha256=self.task_contract_sha256,
+            allowed_capabilities=frozenset({"test"}),
+            test_profile="python-tests-v1",
+        )
+        policy = PolicyReference(
+            policy_id=self.policy_id,
+            policy_sha256=self.policy_sha256,
+            allowed_capabilities=frozenset({"edit", "test"}),
+            approved_test_profiles=frozenset({"python-tests-v1"}),
+        )
+        context = RuntimeContext(
+            repository=self.repository,
+            worktree_realpath=self.worktree_realpath,
+            branch=self.branch,
+            starting_head=self.starting_head,
+            baseline_status_digest=self.baseline_status,
+            baseline_tree_digest=self.baseline_tree,
+        )
+        lease = derive_lease(task, policy, context)
+        self.store.issue(lease)
+        self.store.activate(lease.lease_id)
+        gate = LocalExecutionGate(
+            state_store=self.store,
+            domain_resolver=self._default_domain_resolver,
+            policy_evaluator=self._default_policy_evaluator,
+        )
+
+        result = gate.evaluate_request(os.path.join(self.worktree_dir, "src", "file.py"), "edit")
+
+        self.assertEqual(result.decision, GateDecision.DENY)
+        self.assertEqual(result.violation_code, "LEASE_CAPABILITY_DENIED")
+
     def test_managed_domain_with_no_lease_fails_closed_with_deny(self) -> None:
         # Crucial test: When worktree is in a managed domain, but no active lease exists,
         # it MUST return DENY, not NOT_APPLICABLE!

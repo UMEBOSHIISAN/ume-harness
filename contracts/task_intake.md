@@ -1,7 +1,7 @@
 # Task Intake Contract (Portable — Decision Batching)
 
 > 目的: タスク着手後の「細切れ確認」「都度の承認往復」を根絶し、着手前に1回で必要な判断を確定させる。
-> 適用範囲: ume-harness Core | 状態: ENFORCED
+> 適用範囲: ume-harness Core | 状態: CONTRACT IMPLEMENTED / FULL HOST LIFECYCLE NOT WIRED
 > 由来: 元実装（task_intake_contract.md）は個人パス・個人語彙を含まない、既に汎用的な内容
 > だったため、そのまま採用する（監査で DROP 対象なしと判定済み）。
 
@@ -22,3 +22,10 @@
 - **細切れ質問の禁止**: 複数ターンに分けて連続質問することは禁止
 - **即時実行の条件**: 上記3項目がすべて解決済み（または事前合意済み）の場合は、
   追加の質問ターンを挟まず直ちに実行へ入る
+
+## Runtime status
+
+Human Layerのprompt / normalized outputはclarificationとapprovalの一括提示に使える構造を
+実装している。一方、現行CLIは解釈とpreviewまででworker executionを開始せず、Claude host
+全体の質問turnを監視・強制するintake hookも持たない。本契約はdecision-batchingのcanonical
+規律とCore入出力形を定義するが、host-wide lifecycle enforcementを主張しない。

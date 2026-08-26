@@ -1,7 +1,7 @@
 # Human Request Contract (Japanese Non-Engineer Layer)
 
 > 目的: 日本人の非エンジニアによる曖昧な自然言語リクエストを、内部語彙を露出させずに構造化し、安全に Harness Core へ橋渡しする入出力契約。
-> 適用範囲: Japanese Human Layer | 状態: ENFORCED
+> 適用範囲: Japanese Human Layer | 状態: INPUT/PREVIEW CONTRACT ENFORCED / EXECUTION PIPELINE NOT WIRED
 
 ## 1. 3つの Work Type 定義
 
@@ -30,18 +30,22 @@
       ↓ 2. clarification_batcher (未確定事項の一括確認)    【v0.1.0 CLI実装済み】
 [自然語 Execution Preview] 
       ↓ 3. execution_preview (「やること / しないこと」の提示) 【v0.1.0 CLI実装済み】
-[人間承認]
+[人間承認]                                                   【conceptual / host未結線】
       ↓ 4. 人間による確認・承認
-[Harness Core Task Intake & Lease Execution]
+[Harness Core Task Intake & Lease Execution]                 【conceptual / host未結線】
       ↓ 5. Task Intake ➔ LocalExecutionLease 発行・有効化 ➔ Worker 実行 (PreToolUse 防護)
-[Work Type 別 Verification] 
+[Work Type 別 Verification]                                  【conceptual / host未結線】
       ↓ 6. 出典/成果物/件数の確認
-[自然語 Result] 
+[自然語 Result]                                              【conceptual / host未結線】
       ↓ 7. result_presenter (「やったこと / 触っていないもの」の報告)
-[自律停止 (Autonomous Stop)]
+[自律停止 (Autonomous Stop)]                                 【predicateのみ / host未結線】
 ```
 
-※ v0.1.0 CLI（`bin/ume-harness`）は Step 1〜3（意図解釈・質問集約・実行前プレビュー）の決定論的判定とレポート生成を担当します。Step 4 以降の自動ワーカー実行・検証パイプラインは、PreToolUse hook（`adapters/claude-code/`）による境界防御下で個別に運用されます。
+※ v0.1.0 CLI（`bin/ume-harness`）が担当するのはStep 1〜3（意図解釈・質問集約・
+実行前プレビュー）の決定論的判定とレポート生成だけです。Step 4以降を自動的に接続する
+worker execution / verification / result / Stop orchestratorは現行packageにありません。
+PreToolUse hookは、別途発行・有効化されたLeaseに対するtool境界を防護しますが、
+このpipeline自体を開始・完了するものではありません。
 
 ## 3. UI 語彙の隠蔽規則 (Forbidden Technical Vocabulary)
 
