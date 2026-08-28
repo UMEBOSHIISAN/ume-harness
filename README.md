@@ -4,7 +4,8 @@
 
 # UME-HARNESS (Portable Edition)
 
-> **Portable Local-Execution Policy / Host Adapter + local Japanese safety-explanation surface (Translation Konjac)**
+> **Deterministic Local Work Governance for AI Coding Agents**
+> Portable Local-Execution Policy / Host Adapter + local Japanese safety-explanation surface (Translation Konjac)
 > 日本人の非エンジニアが自然な日本語で安全に仕事を任せられる、オープンソースの
 > ローカル作業の確認・安全判定基盤および作業ツリー実行権限制御アダプタ。
 
