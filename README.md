@@ -39,6 +39,19 @@
 
 ---
 
+## The UME Stack
+
+UME Stackは、ローカル作業・外部へ影響する権限・人間向けの存在表現を、独立した製品境界へ分けます。
+
+- [UME-HARNESS](https://github.com/UMEBOSHIISAN/ume-harness) — Local Work Governance
+- [Mothership](https://github.com/UMEBOSHIISAN/mothership) — Bounded Action Authority
+- **UME Presence** — Human-facing Local Presence（private・現在未配布）
+
+各製品は単独で利用できます。この共通構成は責務境界を示すものであり、製品間の自動runtime接続を
+意味しません。
+
+---
+
 ## 🌟 主な特徴
 
 1. **日本人の非エンジニア向け UX（Japanese Human Layer）**:
