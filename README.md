@@ -1,4 +1,8 @@
-# Umeboshi Harness (Portable Edition)
+<p align="center">
+  <img src="assets/brand/ume-harness-lockup.svg" alt="UME-HARNESS" width="640">
+</p>
+
+# UME-HARNESS (Portable Edition)
 
 > **Portable Local-Execution Policy / Host Adapter + local Japanese safety-explanation surface (Translation Konjac)**
 > 日本人の非エンジニアが自然な日本語で安全に仕事を任せられる、オープンソースの

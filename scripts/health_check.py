@@ -15,7 +15,7 @@ import sys
 from typing import Any
 
 
-EXPECTED_ROOT_DIGEST = "9cb9c48b520b59e2a269a96f760a28d702c4dcb84e46b7eae32f1b064a1f3ff5"
+EXPECTED_ROOT_DIGEST = "4c8343a737ebcc6ff6745ac517502635f98110c752715d676b502cd97a2b88e3"
 IDENTITY_ALGORITHM = "sha256-canonical-path-map-v1"
 IDENTITY_SELF_EXCLUSIONS = frozenset({"scripts/health_check.py"})
 MANDATORY_RELEASE_FILES = frozenset({

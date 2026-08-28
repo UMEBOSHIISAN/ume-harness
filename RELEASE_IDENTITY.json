@@ -11,7 +11,7 @@
     },
     "MANIFEST.md": {
       "mode": "100644",
-      "sha256": "d36b25eebb31f28fcf1b63f60934264f31be71055a681c8dcd7ecfc429011154"
+      "sha256": "006062692d1659ad26649887d9232d384915f98aec6ed571b3b05ef9c82ef325"
     },
     "NOTICE": {
       "mode": "100644",
@@ -27,7 +27,7 @@
     },
     "README.md": {
       "mode": "100644",
-      "sha256": "1b5ec22a17e2d163e2fbdd4ee1538dd1ea64de2b828af1acf735d6583a253a56"
+      "sha256": "aecbd2c2991668c6d7f58d3726961f616bf3c91fce0049c86e2991385f4aba5f"
     },
     "SUPPORT_MATRIX.md": {
       "mode": "100644",
@@ -60,6 +60,10 @@
     "adapters/claude-code/settings.json.fragment": {
       "mode": "100644",
       "sha256": "8a6ec596f6620970b0946502b44594a3a530122e396cb803df6fd9875cf5d313"
+    },
+    "assets/brand/ume-harness-lockup.svg": {
+      "mode": "100644",
+      "sha256": "9f48efc6c345447fd2b4ab7a22155d9c9cdadb75c922c5c0e548a4fa9f80aa08"
     },
     "bin/ume-harness": {
       "mode": "100755",
@@ -103,7 +107,7 @@
     },
     "package_manifest.json": {
       "mode": "100644",
-      "sha256": "1e2896f6a53dd9c23b8dad190d94b2d7d98115c922768bcf41ef2db4932d4909"
+      "sha256": "ee163db9e732686d26f660213a8d6cae78e4c3a284eeaef91a1224309000815f"
     },
     "runtime/activation_updater.py": {
       "mode": "100644",
@@ -155,7 +159,7 @@
     },
     "scripts/health_check.py": {
       "mode": "100755",
-      "sha256": "c29ca598d75f5fdf3663e965bcc2a28836aff2d1601fe9b3f69b3f146e2d3805"
+      "sha256": "6daa826e38db2382008be092a588d6102ef03b5d3c5f30e3536f53cf9730fc63"
     },
     "scripts/install.sh": {
       "mode": "100755",
@@ -163,7 +167,7 @@
     },
     "scripts/release_promote.py": {
       "mode": "100755",
-      "sha256": "1323eb31f7d256225b1ddb453a1f73d1231bbb5838afd11cf75abe15ec642d3d"
+      "sha256": "1fb5e887e456c4ec25e5b8d186c8d53b9178f107a1d6ad752d0629d7dca19cd1"
     },
     "scripts/uninstall.sh": {
       "mode": "100755",
@@ -255,7 +259,7 @@
     }
   },
   "schema": "ume-harness-release-identity.v1",
-  "source_commit": "08c0526eddfbb7d9bfa2c58775bd6af063b62bf0",
-  "source_payload_count": 63,
-  "source_payload_root_sha256": "7b40d0a3e723b65290599c316e0b64dd471d1c87ec7787f18aa64aa908fcf3d8"
+  "source_commit": "bc9ab507ad2db4a915d76bffb6de1deef7b53afe",
+  "source_payload_count": 64,
+  "source_payload_root_sha256": "b5b1fa58f3cdf95f997921bc25d39b51c9e986d4a4448c20e346c415b658a0df"
 }

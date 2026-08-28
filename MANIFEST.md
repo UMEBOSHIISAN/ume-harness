@@ -13,7 +13,7 @@ It has no publish, push, merge, import, or public-to-engineering operation.
 Ambient files, ignored files, untracked scratch, caches, and repository history
 do not become release bytes merely because they exist in the checkout.
 
-Release payload count: 64 files (63 canonical source files plus one generated
+Release payload count: 65 files (64 canonical source files plus one generated
 `RELEASE_IDENTITY.json`).
 
 ```
@@ -24,6 +24,7 @@ NOTICE
 PHASE4_HOLD.md
 QUARANTINE_NOTICE.md
 README.md
+assets/brand/ume-harness-lockup.svg
 RELEASE_IDENTITY.json
 SUPPORT_MATRIX.md
 VERSION
