@@ -16,9 +16,9 @@
   技術イベントを平易な日本語へ変換する Presentation adapter です。canonical な外部
   Action Authority / FrozenAction は所有せず、外部 Authority は Mothership が所有します。
   三製品の境界は **UME-HARNESS = Local Work Plane**、
-  **UME Persona = Persona / Presence Plane**、
+  **UME Presence = Human-facing Presence Plane**、
   **Mothership = Consequential Authority Plane** です。Translation Konjac は
-  Harness内のpresentation-onlyな安全説明面であり、UME Personaやauthority sourceではありません。
+  Harness内のpresentation-onlyな安全説明面であり、UME Presenceやauthority sourceではありません。
   三製品間のruntime integrationはありません。
   **※ 完全自動で外部操作まで完結する Turnkey 秘書アプリや、無人自律実行エンジンではありません。**
 - **Semantic interpretation**: CLIはClaude Sonnet 5を呼ぶ構成です。ただし現行releaseから
