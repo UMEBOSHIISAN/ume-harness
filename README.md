@@ -9,7 +9,7 @@
 > 日本人の非エンジニアが自然な日本語で安全に仕事を任せられる、オープンソースの
 > ローカル作業の確認・安全判定基盤および作業ツリー実行権限制御アダプタ。
 
-## 📌 現在のステータス（v0.1.0・2026-08-26 corrective candidate）
+## 📌 現在のステータス（v0.1.1・generated public release mirror）
 
 - **製品の位置づけ**:
   本パッケージは、local `tool_policy` / Lease Gate を提供する **HOST_ADAPTER** と、
@@ -153,14 +153,14 @@ ume-harness --llm-output-file <path-to-json>
 
 インストール状態の診断（ヘルスチェック）:
 ```bash
-python3 ~/.local/lib/ume-harness/v0.1.0/scripts/health_check.py
+python3 ~/.local/lib/ume-harness/v0.1.1/scripts/health_check.py
 # または、リポジトリ内から:
 python3 ./scripts/health_check.py
 ```
 
 アンインストール（インストール済みreleaseから実行）:
 ```bash
-~/.local/lib/ume-harness/v0.1.0/scripts/uninstall.sh --yes
+~/.local/lib/ume-harness/v0.1.1/scripts/uninstall.sh --yes
 ```
 
 uninstallはpayload削除前にownership-scoped disconnectを実行します。settingsを解析できない、

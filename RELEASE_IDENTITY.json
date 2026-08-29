@@ -1,6 +1,10 @@
 {
   "canonical_repository": "https://github.com/UMEBOSHIISAN/ume-harness-engineering.git",
   "files": {
+    ".github/workflows/ci.yml": {
+      "mode": "100644",
+      "sha256": "51f03009d87da40083e973db63e76860a1f3e484c24361ba5ed62e86228f029e"
+    },
     ".gitignore": {
       "mode": "100644",
       "sha256": "dab1aa08438b7d381b4687d1f4c97bc2a53f8f1a33c0737ce16aa5160dbb39a3"
@@ -11,7 +15,7 @@
     },
     "MANIFEST.md": {
       "mode": "100644",
-      "sha256": "006062692d1659ad26649887d9232d384915f98aec6ed571b3b05ef9c82ef325"
+      "sha256": "da17494b55d58216c06361c12de208deca4a99a9f5acc052f463a08bcd4ebc25"
     },
     "NOTICE": {
       "mode": "100644",
@@ -27,15 +31,15 @@
     },
     "README.md": {
       "mode": "100644",
-      "sha256": "3ce838ae5dd0741dcf6a8c5e2058cd265efa1ee3c2e98c89c8f371e458e9b4c4"
+      "sha256": "fcdd49774235def21607a412355d2a435edbd06fbb56581b1aa6f6c354fe15d3"
     },
     "SUPPORT_MATRIX.md": {
       "mode": "100644",
-      "sha256": "092e41c418baa0e4322ceca144159c79de5fd7189d249c285a39a9750cee95d9"
+      "sha256": "94dac1bcf6f75f1311fff6c8584087bc872fd0dd10abb18278a6b7bb4b6600c5"
     },
     "VERSION": {
       "mode": "100644",
-      "sha256": "e9dd8507f4bf0c6f42458e41aea833ad0bd3f6127272335eee9bf4d58541ed67"
+      "sha256": "80447316529fc62014fbaa047fb67c51ac30e32830cda370405349d8d66d196c"
     },
     "adapters/claude-code/README.md": {
       "mode": "100644",
@@ -107,7 +111,7 @@
     },
     "package_manifest.json": {
       "mode": "100644",
-      "sha256": "ee163db9e732686d26f660213a8d6cae78e4c3a284eeaef91a1224309000815f"
+      "sha256": "abd15338c7fe9e0c4ce7db37eb36d0b4bca3ed770ea513aaeafef3f27ac18d66"
     },
     "runtime/activation_updater.py": {
       "mode": "100644",
@@ -159,23 +163,23 @@
     },
     "scripts/health_check.py": {
       "mode": "100755",
-      "sha256": "6daa826e38db2382008be092a588d6102ef03b5d3c5f30e3536f53cf9730fc63"
+      "sha256": "eb9ab9f64c5d536871538a455983d30899490a1d0340d9d8dcc724202310f059"
     },
     "scripts/install.sh": {
       "mode": "100755",
-      "sha256": "a63be34d4a48d19f875b08d02a68b914d6473d53ea44d3ea4df28b65d2ccc6ff"
+      "sha256": "5bc37d1fbaa7a49cea23ec12dff25b8abcfec55254daf217ff4af0224b8bfb9c"
     },
     "scripts/release_promote.py": {
       "mode": "100755",
-      "sha256": "1fb5e887e456c4ec25e5b8d186c8d53b9178f107a1d6ad752d0629d7dca19cd1"
+      "sha256": "0f78fddc607bc6277110ac08427dae8e29095e1ae57b8c3b281b804b5333b825"
     },
     "scripts/uninstall.sh": {
       "mode": "100755",
-      "sha256": "3794c02d5fdda6f2e4f3a2ca04702b71a2344666febea3c374616b355c3ac885"
+      "sha256": "f9458191a816cd5a37e8337ea90f3950c7a2108a3a255238236bc921da9df007"
     },
     "tests/acceptance_record_claude.md": {
       "mode": "100644",
-      "sha256": "9c4aac9d654329cc305a2dfac9e64c8ded9ee63fc88d24455a6c7f43f6869038"
+      "sha256": "0fad998b6eabb91a9f291abdeaa6b7bbdfb8c107b7e952695d82979492457b5c"
     },
     "tests/case1_acceptance_v2_spec.md": {
       "mode": "100644",
@@ -215,7 +219,7 @@
     },
     "tests/test_release_lifecycle.py": {
       "mode": "100644",
-      "sha256": "d6a7b68aa2f83726db323eae3040e0398e8411fd9703f932c8e6f033384aaee4"
+      "sha256": "9b8ab3618e30590c6dbd92ca0ee23434aad4d2f62a53d11f0c11f990c440d7fc"
     },
     "tests/test_translation_konjac.py": {
       "mode": "100644",
@@ -259,7 +263,7 @@
     }
   },
   "schema": "ume-harness-release-identity.v1",
-  "source_commit": "4517745bb62f8ced29e65e433237052126d79a42",
-  "source_payload_count": 64,
-  "source_payload_root_sha256": "a93a128b2900867b5d96ee953781d9d4f83326d506d9174afda134c8fdfb6726"
+  "source_commit": "459be16acd909cd840991f3b6087c7d4b7543470",
+  "source_payload_count": 65,
+  "source_payload_root_sha256": "796723f27e76ed260b0353dbb93f7a205ee2b9b6b467b2975b0082ca5a773b29"
 }

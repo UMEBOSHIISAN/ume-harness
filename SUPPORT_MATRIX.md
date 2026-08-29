@@ -1,4 +1,4 @@
-# Support Matrix (v0.1.0 corrective candidate / 2026-08-26)
+# Support Matrix (v0.1.1 generated public release mirror / 2026-08-29)
 
 `supported`を単一ラベルで扱わず、Semantic Interpretation、Claude Host Adapter、
 Platformの3面に分ける。単体テスト結果をphysical host proofへ昇格させず、releaseから

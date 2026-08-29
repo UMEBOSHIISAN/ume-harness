@@ -1,4 +1,4 @@
-# Release Manifest (ume-harness v0.1.0)
+# Release Manifest (ume-harness v0.1.1)
 
 `ume-harness-engineering` is the sole canonical source. The public
 `ume-harness` repository is a generated release mirror and is not a supported
@@ -13,11 +13,12 @@ It has no publish, push, merge, import, or public-to-engineering operation.
 Ambient files, ignored files, untracked scratch, caches, and repository history
 do not become release bytes merely because they exist in the checkout.
 
-Release payload count: 65 files (64 canonical source files plus one generated
+Release payload count: 66 files (65 canonical source files plus one generated
 `RELEASE_IDENTITY.json`).
 
 ```
 .gitignore
+.github/workflows/ci.yml
 LICENSE
 MANIFEST.md
 NOTICE

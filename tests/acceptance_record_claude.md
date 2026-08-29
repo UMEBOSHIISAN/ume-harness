@@ -3,7 +3,7 @@
 ```yaml
 document_status: ACCEPTANCE_TEST_RECORD
 test_date: 2026-08-18
-target_version: "Portable Harness v0.1.0"
+target_version: "Portable Harness v0.1.1"
 model_metadata:
   model_name: "Claude 3.7 Sonnet (Hybrid / Thinking Mode)"
   model_version: "claude-3-7-sonnet-20250219"
