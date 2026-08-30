@@ -308,7 +308,7 @@ class LocalExecutionGateTests(unittest.TestCase):
             policy_evaluator=self._default_policy_evaluator,
         )
 
-        unmanaged_target = "/Users/umeboshi/unrelated/path.py"
+        unmanaged_target = "/Users/example/unrelated/path.py"
         result = gate.evaluate_request(unmanaged_target, "edit")
 
         self.assertEqual(result.decision, GateDecision.NOT_APPLICABLE)

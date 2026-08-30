@@ -17,7 +17,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "v0.1.1"
+VERSION = "v0.1.2"
 CANONICAL_REPOSITORY = "https://github.com/UMEBOSHIISAN/ume-harness-engineering.git"
 PUBLIC_MIRROR_REPOSITORY = "https://github.com/UMEBOSHIISAN/ume-harness.git"
 OWNED_EVENTS = ("PreToolUse", "PermissionRequest", "PostToolUseFailure")
@@ -95,6 +95,20 @@ def _initial_settings(temp_root: Path) -> dict:
             ],
         },
     }
+
+
+def test_public_security_policy_is_in_release_only_and_version_is_exact():
+    manifest = _read_json(ROOT / "package_manifest.json")
+    assert manifest["version"] == VERSION.removeprefix("v")
+    assert (ROOT / "VERSION").read_text(encoding="utf-8").strip() == VERSION.removeprefix("v")
+    assert "SECURITY.md" in manifest["release"]["payload"]
+    assert "SECURITY.md" not in manifest["release_identity"]["closure"]
+    assert "SECURITY.md" not in manifest["install_payload"]
+
+    policy = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
+    assert "ume-harness-engineering` is the sole canonical source" in policy
+    assert "GitHub Private Vulnerability Reporting" in policy
+    assert "candidate_actions" in policy
 
 
 def test_release_identity_is_explicit_and_detects_tampered_bytes():
@@ -344,7 +358,7 @@ def test_dangling_hook_check_rejects_shell_dispatch_forms(command_template, monk
         ROOT / "runtime/hook_setup_service.py",
         "hook_setup_shell_dispatch_forms",
     )
-    pkg_root = Path.home() / ".local/lib/ume-harness/v0.1.1"
+    pkg_root = Path.home() / ".local/lib/ume-harness/v0.1.2"
     hook = hss.get_adapter_hook_paths(str(pkg_root))["PreToolUse"]
     home_hook = "~" + hook[len(str(Path.home())):]
     spliced_hook = hook.replace("ume-harness", "ume-'harness'", 1)
@@ -366,12 +380,12 @@ def test_dangling_hook_check_rejects_shell_dispatch_forms(command_template, monk
     adapter_no_leading_slash = str(Path(hook).parent).lstrip("/")
     brace_adapter_prefix = str(Path(hook).parent).replace("claude-code", "claude-")
     padded_brace_adapter_dir = str(Path(hook).parent).replace(
-        "v0.1.1",
-        "v{0..00}.1.1",
+        "v0.1.2",
+        "v{0..00}.1.2",
     )
     plus_brace_adapter_dir = str(Path(hook).parent).replace(
-        "v0.1.1",
-        "v{+0..+0}.1.1",
+        "v0.1.2",
+        "v{+0..+0}.1.2",
     )
     hook_no_leading_slash = hook.lstrip("/")
     data = {
@@ -445,7 +459,7 @@ def test_dangling_hook_check_fails_closed_for_deeply_nested_shell_text():
         ROOT / "runtime/hook_setup_service.py",
         "hook_setup_nested_depth_limit",
     )
-    pkg_root = Path.home() / ".local/lib/ume-harness/v0.1.1"
+    pkg_root = Path.home() / ".local/lib/ume-harness/v0.1.2"
     adapter_dir = Path(hss.get_adapter_hook_paths(str(pkg_root))["PreToolUse"]).parent
     command = f'PATH="/tmp/a b:{adapter_dir}:$PATH" pretooluse_hook.py'
     for _ in range(5):
@@ -979,14 +993,13 @@ def test_uninstall_preserves_user_owned_cli_and_target(symlink):
         assert target.read_bytes() == original
 
 
-def test_source_uninstaller_does_not_trust_a_legacy_target_helper():
+def test_source_uninstaller_refuses_a_tampered_target_helper():
     with tempfile.TemporaryDirectory() as td:
         temp_root = Path(td)
         home, prefix, env = _install(temp_root)
         installed = prefix / "lib/ume-harness" / VERSION
         wrapper = prefix / "bin/ume-harness"
         settings_path = home / ".claude/settings.json"
-        initial = _initial_settings(temp_root)
         owned_command = str(installed / "adapters/claude-code/pretooluse_hook.py")
         configured = _initial_settings(temp_root)
         configured["hooks"]["PreToolUse"].append({
@@ -1006,10 +1019,42 @@ def test_source_uninstaller_does_not_trust_a_legacy_target_helper():
             env=env,
         )
 
-        assert uninstall.returncode == 0, uninstall.stdout + uninstall.stderr
-        assert not installed.exists()
+        assert uninstall.returncode != 0
+        assert "Unproven" in uninstall.stderr
+        assert installed.is_dir()
         assert wrapper.read_bytes() == user_wrapper
-        assert _read_json(settings_path) == initial
+        assert _read_json(settings_path) == configured
+
+
+def test_source_uninstaller_refuses_unverified_payload_before_disconnecting():
+    with tempfile.TemporaryDirectory() as td:
+        temp_root = Path(td)
+        home, prefix, env = _install(temp_root)
+        installed = prefix / "lib/ume-harness" / VERSION
+        wrapper = prefix / "bin/ume-harness"
+        settings_path = home / ".claude/settings.json"
+        initial = _initial_settings(temp_root)
+        _write_json(settings_path, initial)
+
+        setup = _run([wrapper, "setup", "--yes", "--settings-path", settings_path], env=env)
+        assert setup.returncode == 0, setup.stdout + setup.stderr
+        configured = _read_json(settings_path)
+        marker = installed / "user-owned-extra.txt"
+        marker_bytes = b"do not delete\n"
+        marker.write_bytes(marker_bytes)
+
+        uninstall = _run(
+            ["bash", ROOT / "scripts/uninstall.sh", "--prefix", prefix,
+             "--settings-path", settings_path, "--yes"],
+            env=env,
+        )
+
+        assert uninstall.returncode != 0
+        assert "Unproven" in uninstall.stderr
+        assert installed.is_dir()
+        assert wrapper.is_file()
+        assert marker.read_bytes() == marker_bytes
+        assert _read_json(settings_path) == configured
 
 
 def test_installed_uninstaller_holds_when_its_helper_protocol_is_unproven():
@@ -1088,7 +1133,7 @@ def test_final_isolated_lifecycle_closes_owned_state_and_preserves_user_state():
         assert _read_json(settings_path) == initial
 
         uninstall = _run(
-            ["bash", installed / "scripts/uninstall.sh", "--prefix", prefix, "--settings-path", settings_path, "--yes"],
+            ["bash", ROOT / "scripts/uninstall.sh", "--prefix", prefix, "--settings-path", settings_path, "--yes"],
             env=env,
         )
         assert uninstall.returncode == 0, uninstall.stdout + uninstall.stderr
@@ -1115,7 +1160,7 @@ def test_uninstall_disconnects_active_hooks_and_aborts_if_settings_are_unreadabl
         setup = _run([cli, "setup", "--yes", "--settings-path", settings_path], env=env)
         assert setup.returncode == 0, setup.stdout + setup.stderr
         uninstall = _run(
-            ["bash", installed / "scripts/uninstall.sh", "--prefix", prefix, "--settings-path", settings_path, "--yes"],
+            ["bash", ROOT / "scripts/uninstall.sh", "--prefix", prefix, "--settings-path", settings_path, "--yes"],
             env=env,
         )
         assert uninstall.returncode == 0, uninstall.stdout + uninstall.stderr
@@ -1135,7 +1180,7 @@ def test_uninstall_disconnects_active_hooks_and_aborts_if_settings_are_unreadabl
         })
         _write_json(settings_path, wrapped_settings)
         wrapped_refused = _run(
-            ["bash", installed / "scripts/uninstall.sh", "--prefix", prefix, "--settings-path", settings_path, "--yes"],
+            ["bash", ROOT / "scripts/uninstall.sh", "--prefix", prefix, "--settings-path", settings_path, "--yes"],
             env=env,
         )
         assert wrapped_refused.returncode != 0
@@ -1154,7 +1199,7 @@ def test_uninstall_disconnects_active_hooks_and_aborts_if_settings_are_unreadabl
         })
         _write_json(settings_path, wrapped_settings)
         nested_refused = _run(
-            ["bash", installed / "scripts/uninstall.sh", "--prefix", prefix,
+            ["bash", ROOT / "scripts/uninstall.sh", "--prefix", prefix,
              "--settings-path", settings_path, "--yes"],
             env=env,
         )
@@ -1175,7 +1220,7 @@ def test_uninstall_disconnects_active_hooks_and_aborts_if_settings_are_unreadabl
         wrapped_settings["hooks"]["Stop"].append(moved_group)
         _write_json(settings_path, wrapped_settings)
         moved_refused = _run(
-            ["bash", installed / "scripts/uninstall.sh", "--prefix", prefix, "--settings-path", settings_path, "--yes"],
+            ["bash", ROOT / "scripts/uninstall.sh", "--prefix", prefix, "--settings-path", settings_path, "--yes"],
             env=env,
         )
         assert moved_refused.returncode != 0
@@ -1186,7 +1231,7 @@ def test_uninstall_disconnects_active_hooks_and_aborts_if_settings_are_unreadabl
         _write_json(settings_path, wrapped_settings)
 
         wrapped_cleanup = _run(
-            ["bash", installed / "scripts/uninstall.sh", "--prefix", prefix, "--settings-path", settings_path, "--yes"],
+            ["bash", ROOT / "scripts/uninstall.sh", "--prefix", prefix, "--settings-path", settings_path, "--yes"],
             env=env,
         )
         assert wrapped_cleanup.returncode == 0, wrapped_cleanup.stdout + wrapped_cleanup.stderr
@@ -1215,7 +1260,7 @@ def test_uninstall_disconnects_active_hooks_and_aborts_if_settings_are_unreadabl
         assert setup_again.returncode == 0, setup_again.stdout + setup_again.stderr
         settings_path.write_text("{not-json", encoding="utf-8")
         refused = _run(
-            ["bash", installed / "scripts/uninstall.sh", "--prefix", prefix, "--settings-path", settings_path, "--yes"],
+            ["bash", ROOT / "scripts/uninstall.sh", "--prefix", prefix, "--settings-path", settings_path, "--yes"],
             env=env,
         )
         assert refused.returncode != 0

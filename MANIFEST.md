@@ -1,4 +1,4 @@
-# Release Manifest (ume-harness v0.1.1)
+# Release Manifest (ume-harness v0.1.2)
 
 `ume-harness-engineering` is the sole canonical source. The public
 `ume-harness` repository is a generated release mirror and is not a supported
@@ -13,7 +13,7 @@ It has no publish, push, merge, import, or public-to-engineering operation.
 Ambient files, ignored files, untracked scratch, caches, and repository history
 do not become release bytes merely because they exist in the checkout.
 
-Release payload count: 66 files (65 canonical source files plus one generated
+Release payload count: 67 files (66 canonical source files plus one generated
 `RELEASE_IDENTITY.json`).
 
 ```
@@ -27,6 +27,7 @@ QUARANTINE_NOTICE.md
 README.md
 assets/brand/ume-harness-lockup.svg
 RELEASE_IDENTITY.json
+SECURITY.md
 SUPPORT_MATRIX.md
 VERSION
 adapters/claude-code/README.md
@@ -101,11 +102,11 @@ Claude hooks, and the common-language pack and schema.
 Measured against these corrective-candidate bytes:
 
 ```
-python3 tests/test_portable_core.py           -> 40 passed, 0 failed
+python3 tests/test_portable_core.py           -> 42 passed, 0 failed
 python3 tests/test_human_layer_adapter.py     -> 42 passed, 0 failed
 python3 tests/test_cli.py                     -> 13 passed, 0 failed
-python3 tests/test_claude_code_adapter.py     -> 347 passed, 0 failed
-pytest -q tests ux/japanese-human-layer/tests -> 291 passed, 7 subtests passed
+python3 tests/test_claude_code_adapter.py     -> 361 passed, 0 failed
+pytest -q tests ux/japanese-human-layer/tests -> 294 passed
 ```
 
 `tests/test_release_lifecycle.py` covers install → setup → offline use → byte

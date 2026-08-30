@@ -9,7 +9,7 @@
 > 日本人の非エンジニアが自然な日本語で安全に仕事を任せられる、オープンソースの
 > ローカル作業の確認・安全判定基盤および作業ツリー実行権限制御アダプタ。
 
-## 📌 現在のステータス（v0.1.1・generated public release mirror）
+## 📌 現在のステータス（v0.1.2・generated public release mirror）
 
 - **製品の位置づけ**:
   本パッケージは、local `tool_policy` / Lease Gate を提供する **HOST_ADAPTER** と、
@@ -45,10 +45,10 @@ UME Stackは、ローカル作業・外部へ影響する権限・人間向け�
 
 - [UME-HARNESS](https://github.com/UMEBOSHIISAN/ume-harness) — Local Work Governance
 - [Mothership](https://github.com/UMEBOSHIISAN/mothership) — Bounded Action Authority
-- **UME Presence** — Human-facing Local Presence（private・現在未配布）
+- [UME Presence](https://github.com/UMEBOSHIISAN/ume-presence) — Human-facing Local Presence
 
-各製品は単独で利用できます。この共通構成は責務境界を示すものであり、製品間の自動runtime接続を
-意味しません。
+Each product is independently usable. The shared architecture defines responsibility boundaries.
+It does not imply automatic runtime integration.
 
 ---
 
@@ -99,6 +99,20 @@ cd ume-harness
 デフォルトで `~/.local`（実行ファイル: `~/.local/bin/ume-harness`）にインストールされます。
 上記public repositoryは利用者向けgenerated release mirrorです。変更の正本は
 `ume-harness-engineering`であり、public mirrorを編集元にはしません。
+
+v0.1.1からv0.1.2へ更新する場合は、新しいsource checkout内で旧releaseを先に取り外してから
+インストールします。`--force`は同一versionの検証済みinstall専用で、cross-version更新には使いません。
+`SETTINGS_PATH`には、setup時に指定したものと同じsettings fileを設定してください。
+
+```bash
+SETTINGS_PATH="${HOME}/.claude/settings.json" # custom pathを使った場合は同じ値へ置換
+./scripts/uninstall.sh --version v0.1.1 --settings-path "${SETTINGS_PATH}" --yes
+./scripts/install.sh
+```
+
+uninstallはclean source checkout側の外部verifierで旧payload全体を照合してから、exact owned hooksと
+payloadだけを外します。`~/.ume-harness/state`は保持します。独自prefixを使う場合は、両commandに同じ
+`--prefix <DIR>`を指定してください。
 
 #### PATH の確認
 インストール後に `ume-harness` コマンドが見つからない場合は、以下を実行してください：
@@ -153,18 +167,20 @@ ume-harness --llm-output-file <path-to-json>
 
 インストール状態の診断（ヘルスチェック）:
 ```bash
-python3 ~/.local/lib/ume-harness/v0.1.1/scripts/health_check.py
+python3 ~/.local/lib/ume-harness/v0.1.2/scripts/health_check.py
 # または、リポジトリ内から:
 python3 ./scripts/health_check.py
 ```
 
-アンインストール（インストール済みreleaseから実行）:
+アンインストール（同じreleaseのclean source checkoutから実行）:
 ```bash
-~/.local/lib/ume-harness/v0.1.1/scripts/uninstall.sh --yes
+./scripts/uninstall.sh --settings-path "${HOME}/.claude/settings.json" --yes
 ```
 
-uninstallはpayload削除前にownership-scoped disconnectを実行します。settingsを解析できない、
-またはowned hookが残る場合は、インストールを削除せず停止します。
+custom settings pathでsetupした場合は、上記にも同じ`--settings-path <FILE>`を指定します。uninstallは
+payload削除前に外部verifierとownership-scoped disconnectを実行します。payload identityまたはsettingsを
+検証できない、もしくはowned hookが残る場合は、インストールを削除せず停止します。installed copy自身に
+よる自己証明は受理しません。
 
 ---
 
@@ -186,6 +202,7 @@ payload/CLI/owned hooksの消滅、無関係Claude設定の保持、user state�
 - 意思決定ロジックの詳細契約: `contracts/authority_contract.md` / `contracts/tool_policy.md`
 - 日本語UXレイヤーの詳細: `ux/japanese-human-layer/README.md`
 - 対応モデル・実測根拠: `SUPPORT_MATRIX.md`
+- 脆弱性の非公開報告とsecurity boundary: `SECURITY.md`
 - Rev.2設計の全文（FROZEN）: `design/clarification_impact_contract_v0.md`
 
 ---
@@ -238,11 +255,11 @@ platform_boundary:
 ## 📁 パッケージ構成
 
 release構成の機械正本は`package_manifest.json`の明示`release.payload`です。
-`MANIFEST.md`はその64-file closureを同じ順序で表示し、ambient/untracked filesは参照しません。
+`MANIFEST.md`はその67-file closureを同じ順序で表示し、ambient/untracked filesは参照しません。
 
 ```text
 ume-harness/
-├── README.md / LICENSE / NOTICE / VERSION / MANIFEST.md / package_manifest.json
+├── README.md / SECURITY.md / LICENSE / NOTICE / VERSION / MANIFEST.md / package_manifest.json
 ├── domain_descriptor.json / RELEASE_IDENTITY.json（release staging時に生成）
 ├── PHASE4_HOLD.md / QUARANTINE_NOTICE.md / SUPPORT_MATRIX.md
 │

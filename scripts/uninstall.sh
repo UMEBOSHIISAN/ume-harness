@@ -2,7 +2,7 @@
 # uninstall.sh — Safe Portable Harness Prefix Uninstaller
 #
 # Removes ume-harness installation from:
-#   ${PREFIX}/lib/ume-harness/v0.1.1/
+#   ${PREFIX}/lib/ume-harness/v0.1.2/
 #   ${PREFIX}/bin/ume-harness
 #
 # Boundary & Safety Guarantees:
@@ -13,7 +13,7 @@
 set -euo pipefail
 
 SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VERSION="v0.1.1"
+VERSION="v0.1.2"
 PREFIX="${HOME}/.local"
 SETTINGS_PATH="${HOME}/.claude/settings.json"
 YES=false
@@ -22,7 +22,7 @@ usage() {
     echo "Usage: $0 [OPTIONS]"
     echo "Options:"
     echo "  --prefix <DIR>    Installation prefix (default: ~/.local)"
-    echo "  --version <VER>   Target version to remove (default: v0.1.1)"
+    echo "  --version <VER>   Target version to remove (default: v0.1.2)"
     echo "  --settings-path <FILE> Claude settings path (default: ~/.claude/settings.json)"
     echo "  -y, --yes         Non-interactive confirmation"
     echo "  -h, --help        Show this help message"
@@ -91,6 +91,17 @@ fi
 if [ -d "${LIB_DIR}" ]; then
     if [ ! -f "${LIB_DIR}/package_manifest.json" ]; then
         echo "❌ Safety Check Failed: ${LIB_DIR} does not contain package_manifest.json (not an authentic ume-harness install)." >&2
+        exit 1
+    fi
+    OWNERSHIP_VERIFIER="${SOURCE_DIR}/scripts/health_check.py"
+    if [ ! -f "${OWNERSHIP_VERIFIER}" ]; then
+        echo "❌ Safety Check Failed: external install ownership verifier is unavailable; refusing removal." >&2
+        exit 1
+    fi
+    if ! python3 "${OWNERSHIP_VERIFIER}" \
+        --installed-dir "${LIB_DIR}" \
+        --owned-install-only >/dev/null; then
+        echo "❌ Safety Check Failed: Unproven install payload at ${LIB_DIR}. User-owned or changed bytes were preserved." >&2
         exit 1
     fi
 fi
