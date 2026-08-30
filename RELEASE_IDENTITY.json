@@ -15,7 +15,7 @@
     },
     "MANIFEST.md": {
       "mode": "100644",
-      "sha256": "da17494b55d58216c06361c12de208deca4a99a9f5acc052f463a08bcd4ebc25"
+      "sha256": "f218da122f15a58f09da0b7cf5ef4740e3402f17cd220849646ee26f84c47d67"
     },
     "NOTICE": {
       "mode": "100644",
@@ -31,15 +31,19 @@
     },
     "README.md": {
       "mode": "100644",
-      "sha256": "fcdd49774235def21607a412355d2a435edbd06fbb56581b1aa6f6c354fe15d3"
+      "sha256": "344b808090186d3b8cba13e9e841aca473e3a4e48daee2d43c2915b0f6812cd7"
+    },
+    "SECURITY.md": {
+      "mode": "100644",
+      "sha256": "a8945f595e7badd9a55bede924cfa02e59141c8c882aafdc8e3c77f3a6ffca29"
     },
     "SUPPORT_MATRIX.md": {
       "mode": "100644",
-      "sha256": "94dac1bcf6f75f1311fff6c8584087bc872fd0dd10abb18278a6b7bb4b6600c5"
+      "sha256": "1c1b10d3b9924e78f17fa2bed466b264ea43d511267e135ab84a6b3222f52f9d"
     },
     "VERSION": {
       "mode": "100644",
-      "sha256": "80447316529fc62014fbaa047fb67c51ac30e32830cda370405349d8d66d196c"
+      "sha256": "297b50f08386d3521f8fdaf2f78eb8d9d0acdf452d2e61596905fba37208c792"
     },
     "adapters/claude-code/README.md": {
       "mode": "100644",
@@ -111,7 +115,7 @@
     },
     "package_manifest.json": {
       "mode": "100644",
-      "sha256": "abd15338c7fe9e0c4ce7db37eb36d0b4bca3ed770ea513aaeafef3f27ac18d66"
+      "sha256": "d2e53b59c003b5618f1a4a58cd05a5508487e6ec0ce4ca1bfca7cd5f763483bb"
     },
     "runtime/activation_updater.py": {
       "mode": "100644",
@@ -163,19 +167,19 @@
     },
     "scripts/health_check.py": {
       "mode": "100755",
-      "sha256": "eb9ab9f64c5d536871538a455983d30899490a1d0340d9d8dcc724202310f059"
+      "sha256": "302eb1b19e62c3f2de647cf0c14ccea7f4f387ab0bb2198217ae3479e842f102"
     },
     "scripts/install.sh": {
       "mode": "100755",
-      "sha256": "5bc37d1fbaa7a49cea23ec12dff25b8abcfec55254daf217ff4af0224b8bfb9c"
+      "sha256": "111e574c51aa3c06172e145a618aa1d52e080be7d71a4f1e1780f1c5ef0c19df"
     },
     "scripts/release_promote.py": {
       "mode": "100755",
-      "sha256": "0f78fddc607bc6277110ac08427dae8e29095e1ae57b8c3b281b804b5333b825"
+      "sha256": "947212114228af60e66d9599ed52e6cef0038dac941ba6405bec8958bf17960b"
     },
     "scripts/uninstall.sh": {
       "mode": "100755",
-      "sha256": "f9458191a816cd5a37e8337ea90f3950c7a2108a3a255238236bc921da9df007"
+      "sha256": "f1bb4db81e2050b9ed277302c13c751c6fe95c10d0f74f91c3fc676d5978e8ab"
     },
     "tests/acceptance_record_claude.md": {
       "mode": "100644",
@@ -203,11 +207,11 @@
     },
     "tests/test_local_execution_gate.py": {
       "mode": "100644",
-      "sha256": "3d1b5f4707ccd3c5608ecbd5640ec031b027a363937434197d0747bcaf4ff545"
+      "sha256": "0332679716599e3903af24c706991f2f3781234cc48ec9ca3e8d4bcc56e3b362"
     },
     "tests/test_local_execution_lease.py": {
       "mode": "100644",
-      "sha256": "89bfc3173a06358489d1b66b8f1fae45a4bd9411d0fb8cc5aa57d2d685382215"
+      "sha256": "3e101de77f95fe901e3257410c5486ac44414ae4596daeead100bfd28aa16abe"
     },
     "tests/test_local_execution_lease_state.py": {
       "mode": "100644",
@@ -215,11 +219,11 @@
     },
     "tests/test_portable_core.py": {
       "mode": "100644",
-      "sha256": "85ff3ee41816ac458992ae7dbcb7469e450f882dd38cee33cfa0f54ea8521cd7"
+      "sha256": "37b19a85e664cb7f6de76af154ab2a0de3291af35e36048f9d54823ee83bd400"
     },
     "tests/test_release_lifecycle.py": {
       "mode": "100644",
-      "sha256": "9b8ab3618e30590c6dbd92ca0ee23434aad4d2f62a53d11f0c11f990c440d7fc"
+      "sha256": "de57f7ac55ee35c46b8ee8b630f2e618fe21962cca581bfc6248b20feaa60fed"
     },
     "tests/test_translation_konjac.py": {
       "mode": "100644",
@@ -263,7 +267,7 @@
     }
   },
   "schema": "ume-harness-release-identity.v1",
-  "source_commit": "459be16acd909cd840991f3b6087c7d4b7543470",
-  "source_payload_count": 65,
-  "source_payload_root_sha256": "796723f27e76ed260b0353dbb93f7a205ee2b9b6b467b2975b0082ca5a773b29"
+  "source_commit": "cf708dde244f092e1a417f4c63836fe2300574c4",
+  "source_payload_count": 66,
+  "source_payload_root_sha256": "95ae324687d6ab7adb7c5771d6cecd62b2343d6f268790becae941fa606c3f1f"
 }

@@ -1,6 +1,6 @@
 {
   "name": "ume-harness",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Portable local-execution policy / HOST_ADAPTER (local Authority Overlay + Clarification Impact Contract) with a Japanese Human Layer and Presentation-only Translation Konjac; canonical external Action Authority is owned by Mothership. The CLI is configured for Claude Sonnet 5; model semantics and physical Claude hook support have separate evidence boundaries (see SUPPORT_MATRIX.md).",
   "license": "MIT",
   "repository": "https://github.com/UMEBOSHIISAN/ume-harness-engineering",
@@ -78,6 +78,7 @@
       "README.md",
       "assets/brand/ume-harness-lockup.svg",
       "RELEASE_IDENTITY.json",
+      "SECURITY.md",
       "SUPPORT_MATRIX.md",
       "VERSION",
       "adapters/claude-code/README.md",

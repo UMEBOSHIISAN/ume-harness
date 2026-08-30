@@ -277,6 +277,23 @@ def test_manifest_matches_explicit_release_closure():
     check("generated identityがclosure内に1件だけ存在", release_payload.count(generated) == 1)
 
 
+def test_three_plane_public_truth():
+    print("\n[docs] public three-plane identityは独立利用と非自動接続を明記する")
+    pkg_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+    with open(os.path.join(pkg_root, "README.md"), encoding="utf-8") as f:
+        readme = f.read()
+    normalized = " ".join(readme.split())
+    check(
+        "UME Presence public repositoryをHuman-facing Local Presenceとして参照",
+        "[UME Presence](https://github.com/UMEBOSHIISAN/ume-presence) — Human-facing Local Presence" in readme,
+    )
+    check(
+        "各製品の独立利用とruntime非自動接続を明記",
+        "Each product is independently usable. The shared architecture defines responsibility boundaries. "
+        "It does not imply automatic runtime integration." in normalized,
+    )
+
+
 def test_japanese_human_layer_fixture_consistency():
     print("\n[ux] japanese-human-layer 既存fixture整合性テストを呼び出す（Layer 1のみ・LLM不使用）")
     layer_test = os.path.join(
@@ -308,6 +325,7 @@ def main():
     test_stop_adapter_all_conditions_met()
     test_stop_adapter_missing_condition_blocks()
     test_manifest_matches_explicit_release_closure()
+    test_three_plane_public_truth()
     test_japanese_human_layer_fixture_consistency()
 
     print(f"\n=== {PASS} passed, {FAIL} failed ===")
