@@ -510,6 +510,12 @@ def test_manifest_matches_explicit_release_closure():
     manifest_path = os.path.join(pkg_root, "MANIFEST.md")
     with open(manifest_path, "r", encoding="utf-8") as f:
         manifest_text = f.read()
+    with open(os.path.join(pkg_root, "VERSION"), encoding="utf-8") as f:
+        version = f.read().strip()
+    with open(os.path.join(pkg_root, "SECURITY.md"), encoding="utf-8") as f:
+        security_text = f.read()
+    with open(os.path.join(pkg_root, "SUPPORT_MATRIX.md"), encoding="utf-8") as f:
+        support_matrix_text = f.read()
     m = re.search(r"```\n(.*?)\n```", manifest_text, re.DOTALL)
     declared_files = [line.strip() for line in (m.group(1).splitlines() if m else []) if line.strip()]
     check(
@@ -529,6 +535,17 @@ def test_manifest_matches_explicit_release_closure():
         f"missing={missing_source_files}",
     )
     check("generated identityがclosure内に1件だけ存在", release_payload.count(generated) == 1)
+    check(
+        "MANIFEST.md のversionと実測test countがcurrent releaseに一致",
+        f"# Release Manifest (ume-harness v{version})" in manifest_text
+        and f"Measured against the v{version} release-candidate bytes" in manifest_text
+        and "  -> 316 passed" in manifest_text,
+    )
+    check(
+        "配布security/support文書のversionがcurrent releaseに一致",
+        f"v{version} attests the explicit protected-runtime closure" in security_text
+        and f"# Support Matrix (v{version} generated public release mirror / 2026-09-02)" in support_matrix_text,
+    )
 
 
 def test_three_plane_public_truth():
@@ -536,6 +553,8 @@ def test_three_plane_public_truth():
     pkg_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
     with open(os.path.join(pkg_root, "README.md"), encoding="utf-8") as f:
         readme = f.read()
+    with open(os.path.join(pkg_root, "VERSION"), encoding="utf-8") as f:
+        version = f.read().strip()
     normalized = " ".join(readme.split())
     first_screen = "\n".join(readme.splitlines()[:50])
     check(
@@ -591,6 +610,15 @@ def test_three_plane_public_truth():
     check(
         "README preserves canonical-source and generated-mirror boundary",
         "public `ume-harness`は明示closureから生成するrelease mirror" in readme,
+    )
+    check(
+        "README exposes public CI status and workflow",
+        "https://github.com/UMEBOSHIISAN/ume-harness/actions/workflows/ci.yml/badge.svg" in readme
+        and "https://github.com/UMEBOSHIISAN/ume-harness/actions/workflows/ci.yml" in readme,
+    )
+    check(
+        "README links the exact current public release",
+        f"https://github.com/UMEBOSHIISAN/ume-harness/releases/tag/v{version}" in readme,
     )
     check(
         "UME Presence public repositoryをHuman-facing Local Presenceとして参照",

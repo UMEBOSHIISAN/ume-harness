@@ -4,6 +4,9 @@
 
 # UME-HARNESS (Portable Edition)
 
+[![CI](https://github.com/UMEBOSHIISAN/ume-harness/actions/workflows/ci.yml/badge.svg)](https://github.com/UMEBOSHIISAN/ume-harness/actions/workflows/ci.yml)
+[Release v0.1.4](https://github.com/UMEBOSHIISAN/ume-harness/releases/tag/v0.1.4)
+
 > **Local work governance for AI coding agents with fail-closed permission and worktree gates**
 > Preview intended local work, keep active work inside its worktree, and require approval
 > before external or destructive actions. Claude Code is the first integrated and validated host adapter.
@@ -15,7 +18,7 @@
 > 現在、Claude Codeが最初の統合・検証済みホストアダプタです。
 > 非エンジニア向けの導入しやすさは検証中です。
 
-## 📌 現在のステータス（Technical Preview / v0.1.3・generated public release mirror）
+## 📌 現在のステータス（Technical Preview / v0.1.4・generated public release mirror）
 
 - **製品の位置づけ**:
   UME-HARNESSは、AI coding agentsへローカル作業を任せるためのHuman Layerと
@@ -155,13 +158,13 @@ cd ume-harness
 上記public repositoryは利用者向けgenerated release mirrorです。変更の正本は
 `ume-harness-engineering`であり、public mirrorを編集元にはしません。
 
-v0.1.2からv0.1.3へ更新する場合は、新しいsource checkout内で旧releaseを先に取り外してから
+v0.1.3からv0.1.4へ更新する場合は、新しいsource checkout内で旧releaseを先に取り外してから
 インストールします。`--force`は同一versionの検証済みinstall専用で、cross-version更新には使いません。
 `SETTINGS_PATH`には、setup時に指定したものと同じsettings fileを設定してください。
 
 ```bash
 SETTINGS_PATH="${HOME}/.claude/settings.json" # custom pathを使った場合は同じ値へ置換
-./scripts/uninstall.sh --version v0.1.2 --settings-path "${SETTINGS_PATH}" --yes
+./scripts/uninstall.sh --version v0.1.3 --settings-path "${SETTINGS_PATH}" --yes
 ./scripts/install.sh
 ```
 
@@ -222,7 +225,7 @@ ume-harness --llm-output-file <path-to-json>
 
 インストール状態の診断（ヘルスチェック）:
 ```bash
-python3 ~/.local/lib/ume-harness/v0.1.3/scripts/health_check.py
+python3 ~/.local/lib/ume-harness/v0.1.4/scripts/health_check.py
 # または、リポジトリ内から:
 python3 ./scripts/health_check.py
 ```
@@ -264,7 +267,7 @@ payload/CLI/owned hooksの消滅、無関係Claude設定の保持、user state�
 
 ## ⚠️ 既知の制約（Known Limitations）
 
-- 有効なactivation stateがある場合、v0.1.3はprotected-runtime closureを検証してからauthority moduleを
+- 有効なactivation stateがある場合、v0.1.4はprotected-runtime closureを検証してからauthority moduleを
   実行します。activation stateがないlegacy operationではこのclosure検証は適用されません。host
   entrypointとgate前に読み込むpresentation-only importはtrusted prerequisiteです。
 - OS pseudo-fileのsecret検出は未網羅です。`/proc/<pid>/environ`形式は拒否しますが、その他の`/proc`や
