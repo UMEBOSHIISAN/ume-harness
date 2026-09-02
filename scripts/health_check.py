@@ -15,7 +15,7 @@ import sys
 from typing import Any
 
 
-EXPECTED_ROOT_DIGEST = "04b27768af3f84c502f7c92f735f813e77fc61f7f3f41625412c46159fd1fd40"
+EXPECTED_ROOT_DIGEST = "19ef4ea326a5c5a388ba7a900b82e90e63ed0f3a40e41ebe54271ec1834f252c"
 IDENTITY_ALGORITHM = "sha256-canonical-path-map-v1"
 IDENTITY_SELF_EXCLUSIONS = frozenset({"scripts/health_check.py"})
 MANDATORY_RELEASE_FILES = frozenset({
@@ -410,7 +410,7 @@ def main(argv=None) -> int:
             installed_dir = self_parent
         else:
             prefix = args.prefix or os.path.expanduser("~/.local")
-            installed_dir = os.path.join(prefix, "lib", "ume-harness", "v0.1.3")
+            installed_dir = os.path.join(prefix, "lib", "ume-harness", "v0.1.4")
 
     if args.identity_only:
         passed, detail = verify_release_identity(os.path.abspath(installed_dir))

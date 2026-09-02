@@ -96,7 +96,7 @@ does not call the observer-backed operation lifecycle. A stored `test_profile` d
 allowlist, and an unknown test command remains approval-required. Native Windows is unsupported; Linux/POSIX remains
 expected but unverified for the current release evidence.
 
-When a valid activation state exists, v0.1.3 attests the explicit protected-runtime closure before protected authority
+When a valid activation state exists, v0.1.4 attests the explicit protected-runtime closure before protected authority
 modules execute. Without activation state, the legacy path does not enforce that closure attestation. The trusted host
 entrypoint and presentation-only imports loaded before gate verification remain prerequisites; this is not universal
 attestation of every ambient or imported module.

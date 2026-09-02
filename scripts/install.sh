@@ -2,7 +2,7 @@
 # install.sh — Fail-Safe Portable Harness Prefix Installer
 #
 # Installs the explicit Generic Install Payload into:
-#   ${PREFIX}/lib/ume-harness/v0.1.3/
+#   ${PREFIX}/lib/ume-harness/v0.1.4/
 #   ${PREFIX}/bin/ume-harness
 #
 # Boundary Guarantee:
@@ -16,7 +16,7 @@ set -euo pipefail
 export PYTHONDONTWRITEBYTECODE=1
 
 SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VERSION="v0.1.3"
+VERSION="v0.1.4"
 PREFIX="${HOME}/.local"
 FORCE=false
 DRY_RUN=false
