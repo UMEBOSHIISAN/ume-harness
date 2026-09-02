@@ -2,7 +2,7 @@
 # install.sh — Fail-Safe Portable Harness Prefix Installer
 #
 # Installs the explicit Generic Install Payload into:
-#   ${PREFIX}/lib/ume-harness/v0.1.2/
+#   ${PREFIX}/lib/ume-harness/v0.1.3/
 #   ${PREFIX}/bin/ume-harness
 #
 # Boundary Guarantee:
@@ -16,7 +16,7 @@ set -euo pipefail
 export PYTHONDONTWRITEBYTECODE=1
 
 SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VERSION="v0.1.2"
+VERSION="v0.1.3"
 PREFIX="${HOME}/.local"
 FORCE=false
 DRY_RUN=false
@@ -99,7 +99,7 @@ if [ ! -f "${MANIFEST_FILE}" ]; then
     exit 1
 fi
 
-PAYLOAD_COUNT=$(python3 -c "import json; print(len(json.load(open('${MANIFEST_FILE}'))['install_payload']))")
+PAYLOAD_COUNT=$(python3 -c 'import json, sys; print(len(json.load(open(sys.argv[1]))["install_payload"]))' "${MANIFEST_FILE}")
 if [ "${PAYLOAD_COUNT}" -le 0 ]; then
     echo "❌ Manifest Mismatch: package_manifest.json contains no install_payload files." >&2
     exit 1
@@ -108,7 +108,7 @@ fi
 PAYLOAD_LIST=()
 while IFS= read -r line; do
     [ -n "$line" ] && PAYLOAD_LIST+=("$line")
-done < <(python3 -c "import json; [print(x) for x in json.load(open('${MANIFEST_FILE}'))['install_payload']]")
+done < <(python3 -c 'import json, sys; [print(x) for x in json.load(open(sys.argv[1]))["install_payload"]]' "${MANIFEST_FILE}")
 
 for rel in "${PAYLOAD_LIST[@]}"; do
     if [ ! -f "${SOURCE_DIR}/${rel}" ]; then

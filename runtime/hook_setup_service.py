@@ -37,6 +37,24 @@ def get_adapter_hook_paths(pkg_root: str) -> Dict[str, str]:
     }
 
 
+def get_adapter_hook_commands(pkg_root: str) -> Dict[str, str]:
+    """Return shell-safe command strings for the three owned hook paths."""
+    return {
+        event_name: shlex.quote(path)
+        for event_name, path in get_adapter_hook_paths(pkg_root).items()
+    }
+
+
+def _owned_hook_command_variants(pkg_root: str) -> Dict[str, frozenset[str]]:
+    """Return current commands plus exact legacy unquoted commands."""
+    paths = get_adapter_hook_paths(pkg_root)
+    commands = get_adapter_hook_commands(pkg_root)
+    return {
+        event_name: frozenset({paths[event_name], commands[event_name]})
+        for event_name in paths
+    }
+
+
 def render_cli_wrapper(pkg_root: str, *, bytecode_safe: bool = True) -> str:
     cli_path = os.path.join(os.path.abspath(pkg_root), "bin", "ume-harness")
     quoted_cli_path = shlex.quote(cli_path)
@@ -109,24 +127,72 @@ def _read_settings(settings_path: str) -> Tuple[Dict[str, Any], bool]:
     return data, True
 
 
+class SettingsCommitDurabilityError(OSError):
+    """The settings replacement committed but directory durability was unproven."""
+
+
 def _atomic_write_settings(settings_path: str, data: Dict[str, Any]) -> None:
     settings_dir = os.path.dirname(settings_path)
     os.makedirs(settings_dir, exist_ok=True)
-    fd, temp_path = tempfile.mkstemp(dir=settings_dir, prefix="settings_merge_", text=True)
+
+    # Preserve the security metadata of an existing settings file.  Replacing
+    # the pathname with a fresh mkstemp file would otherwise silently reset
+    # custom mode/ownership (and make a settings update a privilege boundary).
+    existing = None
     try:
+        existing = os.lstat(settings_path)
+    except FileNotFoundError:
+        pass
+    if existing is not None:
+        if stat.S_ISLNK(existing.st_mode):
+            raise ValueError("settings.json symlinks are unsupported because ownership cannot be preserved safely")
+        if not stat.S_ISREG(existing.st_mode):
+            raise ValueError("settings.json must be a regular file")
+
+    fd, temp_path = tempfile.mkstemp(dir=settings_dir, prefix="settings_merge_", text=True)
+    committed = False
+    try:
+        target_mode = stat.S_IMODE(existing.st_mode) if existing is not None else 0o600
+        os.fchmod(fd, target_mode)
+        if existing is not None and hasattr(os, "fchown"):
+            os.fchown(fd, existing.st_uid, existing.st_gid)
+
         with os.fdopen(fd, "w", encoding="utf-8") as f:
+            fd = -1
             json.dump(data, f, indent=2, ensure_ascii=False)
             f.write("\n")
+            f.flush()
+            os.fsync(f.fileno())
         os.replace(temp_path, settings_path)
-    except Exception:
+        committed = True
+
+        # Make the rename durable as well as the file contents.  This is a
+        # no-op only on platforms that cannot open directories for fsync; the
+        # supported POSIX hosts provide it.
+        dir_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+        dir_fd = os.open(settings_dir, dir_flags)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
+    except Exception as exc:
         try:
             os.unlink(temp_path)
         except FileNotFoundError:
             pass
+        if fd >= 0:
+            os.close(fd)
+        if committed:
+            raise SettingsCommitDurabilityError(
+                "settings replacement committed but directory durability could not be confirmed"
+            ) from exc
         raise
 
 
-def _remove_owned_commands(data: Dict[str, Any], hook_paths: Dict[str, str]) -> bool:
+def _remove_owned_commands(
+    data: Dict[str, Any],
+    owned_commands_by_event: Dict[str, frozenset[str]],
+) -> bool:
     """Remove exact canonical commands only from the three owned events."""
     hooks = data.get("hooks")
     if hooks is None:
@@ -135,7 +201,7 @@ def _remove_owned_commands(data: Dict[str, Any], hook_paths: Dict[str, str]) -> 
         raise ValueError("settings.json の hooks は JSON object である必要があります。")
 
     changed = False
-    for event_name, owned_command in hook_paths.items():
+    for event_name, owned_commands in owned_commands_by_event.items():
         if event_name not in hooks:
             continue
         event_groups = hooks[event_name]
@@ -155,7 +221,7 @@ def _remove_owned_commands(data: Dict[str, Any], hook_paths: Dict[str, str]) -> 
                 is_owned = (
                     isinstance(hook_item, dict)
                     and hook_item.get("type") == "command"
-                    and hook_item.get("command") == owned_command
+                    and hook_item.get("command") in owned_commands
                 )
                 if is_owned:
                     changed = True
@@ -175,7 +241,10 @@ def _remove_owned_commands(data: Dict[str, Any], hook_paths: Dict[str, str]) -> 
                     set(group) == {"matcher", "hooks"}
                     and group.get("matcher") == "*"
                     and len(group_hooks) == 1
-                    and group_hooks[0] == {"type": "command", "command": owned_command}
+                    and isinstance(group_hooks[0], dict)
+                    and set(group_hooks[0]) == {"type", "command"}
+                    and group_hooks[0].get("type") == "command"
+                    and group_hooks[0].get("command") in owned_commands
                 )
                 if not generated_group:
                     preserved_group = dict(group)
@@ -199,7 +268,7 @@ def contains_owned_hooks(data: Dict[str, Any], pkg_root: str) -> bool:
     if not isinstance(hooks, dict):
         raise ValueError("settings.json の hooks は JSON object である必要があります。")
 
-    for event_name, owned_command in get_adapter_hook_paths(pkg_root).items():
+    for event_name, owned_commands in _owned_hook_command_variants(pkg_root).items():
         event_groups = hooks.get(event_name, [])
         if not isinstance(event_groups, list):
             raise ValueError(f"settings.json の hooks.{event_name} は配列である必要があります。")
@@ -213,7 +282,7 @@ def contains_owned_hooks(data: Dict[str, Any], pkg_root: str) -> bool:
                 if (
                     isinstance(hook_item, dict)
                     and hook_item.get("type") == "command"
-                    and hook_item.get("command") == owned_command
+                    and hook_item.get("command") in owned_commands
                 ):
                     return True
     return False
@@ -805,18 +874,28 @@ def install_hooks_to_settings(
     except Exception as e:
         return False, f"既存の settings.json の読み込みに失敗しました: {e}"
 
+    hook_commands = get_adapter_hook_commands(pkg_root)
+    legacy_commands = {
+        event_name: frozenset({hook_paths[event_name]})
+        for event_name in hook_paths
+        if hook_paths[event_name] != hook_commands[event_name]
+    }
+    try:
+        changed = _remove_owned_commands(current_data, legacy_commands) if legacy_commands else False
+    except Exception as e:
+        return False, f"既存の settings.json の hook 構造を安全に処理できません: {e}"
+
     hooks = current_data.setdefault("hooks", {})
     if not isinstance(hooks, dict):
         return False, "既存の settings.json の hooks は JSON object ではありません。"
-    changed = False
     try:
-        for event_name, hpath in hook_paths.items():
+        for event_name, command in hook_commands.items():
             event_hooks = hooks.setdefault(event_name, [])
-            if _event_contains_owned_command(event_name, event_hooks, hpath):
+            if _event_contains_owned_command(event_name, event_hooks, command):
                 continue
             event_hooks.append({
                 "matcher": "*",
-                "hooks": [{"type": "command", "command": hpath}],
+                "hooks": [{"type": "command", "command": command}],
             })
             changed = True
     except Exception as e:
@@ -838,6 +917,8 @@ def install_hooks_to_settings(
 
     try:
         _atomic_write_settings(settings_path, current_data)
+    except SettingsCommitDurabilityError:
+        return True, f"接続完了（設定は反映済みですが、永続性の確認は保留です）\nバックアップ: {backup_path}"
     except Exception as e:
         return False, f"settings.json の安全な書き込みに失敗しました: {e}"
     return True, f"接続完了\nバックアップ: {backup_path}"
@@ -860,10 +941,14 @@ def disconnect_hooks_from_settings(
     if not existed:
         return True, "対象設定が存在しないため、切断対象はありません。"
 
+    durability_unconfirmed = False
     try:
-        changed = _remove_owned_commands(current_data, get_adapter_hook_paths(pkg_root))
+        changed = _remove_owned_commands(current_data, _owned_hook_command_variants(pkg_root))
         if changed:
-            _atomic_write_settings(settings_path, current_data)
+            try:
+                _atomic_write_settings(settings_path, current_data)
+            except SettingsCommitDurabilityError:
+                durability_unconfirmed = True
         verified_data, _ = _read_settings(settings_path)
         if contains_owned_hooks(verified_data, pkg_root):
             return False, "所有フックが残っているため切断を完了できませんでした。"
@@ -872,10 +957,17 @@ def disconnect_hooks_from_settings(
                 "canonical hook pathを参照する非canonical commandが残っています。"
                 "ユーザー所有設定は削除せず、payload削除を停止します。"
             )
+        if durability_unconfirmed and require_no_payload_references:
+            return False, (
+                "settings.json の変更は反映済みですが永続性を確認できないため、"
+                "アンインストールを停止しました。"
+            )
     except Exception as e:
         return False, f"所有フックを安全に切断できません: {e}"
 
     if changed:
+        if durability_unconfirmed:
+            return True, "ume-harness が所有する3本のフックを切断しました（永続性の確認は保留です）。"
         return True, "ume-harness が所有する3本のフックを切断しました。"
     return True, "ume-harness が所有するフックは接続されていません。"
 

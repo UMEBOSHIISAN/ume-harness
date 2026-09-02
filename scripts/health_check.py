@@ -15,7 +15,7 @@ import sys
 from typing import Any
 
 
-EXPECTED_ROOT_DIGEST = "88ab3241986771ee01deb8a860c17cee0cc4e4e6bc46f4077092c8ad84b723f8"
+EXPECTED_ROOT_DIGEST = "04b27768af3f84c502f7c92f735f813e77fc61f7f3f41625412c46159fd1fd40"
 IDENTITY_ALGORITHM = "sha256-canonical-path-map-v1"
 IDENTITY_SELF_EXCLUSIONS = frozenset({"scripts/health_check.py"})
 MANDATORY_RELEASE_FILES = frozenset({
@@ -292,16 +292,22 @@ def run_diagnostics(installed_dir: str, prefix_dir: str | None = None, json_outp
     )
     checks.append(("CLI Executable Entrypoint", cli_found is not None, cli_found or "None"))
 
+    identity_ok, identity_detail = verify_release_identity(installed_dir)
+    checks.append(("Release Byte Identity", identity_ok, identity_detail))
+
     import_ok = False
-    import_detail = ""
-    try:
-        sub_env = os.environ.copy()
-        sub_env["PYTHONDONTWRITEBYTECODE"] = "1"
-        sub_env["PYTHONPATH"] = (
-            f"{os.path.join(installed_dir, 'runtime')}:"
-            f"{os.path.join(installed_dir, 'ux', 'japanese-human-layer')}"
-        )
-        trace_code = """
+    if not identity_ok:
+        import_detail = f"Skipped until release byte identity passes: {identity_detail}"
+    else:
+        import_detail = ""
+        try:
+            sub_env = os.environ.copy()
+            sub_env["PYTHONDONTWRITEBYTECODE"] = "1"
+            sub_env["PYTHONPATH"] = (
+                f"{os.path.join(installed_dir, 'runtime')}:"
+                f"{os.path.join(installed_dir, 'ux', 'japanese-human-layer')}"
+            )
+            trace_code = """
 import activation_updater
 import common_language_pack
 import hook_setup_service
@@ -312,21 +318,19 @@ import tool_policy
 import translation_konjac
 print("IMPORT_OK")
 """
-        proc = subprocess.run(
-            [sys.executable, "-c", trace_code],
-            env=sub_env,
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        import_ok = proc.returncode == 0 and "IMPORT_OK" in proc.stdout
-        import_detail = "Imported from installed prefix" if import_ok else f"Failed: {proc.stderr[:200]}"
-    except Exception as e:
-        import_detail = f"Exception: {e}"
+            proc = subprocess.run(
+                [sys.executable, "-c", trace_code],
+                cwd=os.path.join(installed_dir, "runtime"),
+                env=sub_env,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            import_ok = proc.returncode == 0 and "IMPORT_OK" in proc.stdout
+            import_detail = "Imported from installed prefix" if import_ok else f"Failed: {proc.stderr[:200]}"
+        except Exception as e:
+            import_detail = f"Exception: {e}"
     checks.append(("Runtime Module Import Isolation", import_ok, import_detail))
-
-    identity_ok, identity_detail = verify_release_identity(installed_dir)
-    checks.append(("Release Byte Identity", identity_ok, identity_detail))
 
     adapter_files = [
         "adapters/claude-code/lease_gate_runner.py",
@@ -406,7 +410,7 @@ def main(argv=None) -> int:
             installed_dir = self_parent
         else:
             prefix = args.prefix or os.path.expanduser("~/.local")
-            installed_dir = os.path.join(prefix, "lib", "ume-harness", "v0.1.2")
+            installed_dir = os.path.join(prefix, "lib", "ume-harness", "v0.1.3")
 
     if args.identity_only:
         passed, detail = verify_release_identity(os.path.abspath(installed_dir))

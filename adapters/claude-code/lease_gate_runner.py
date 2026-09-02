@@ -16,11 +16,14 @@ import enum
 import fnmatch
 import functools
 import hashlib
+import importlib
 import json
 import os
 import re
 import shlex
+import stat
 import sys
+import types
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -33,9 +36,104 @@ _RUNTIME_DIR = os.path.join(_PKG_ROOT, "runtime")
 if _RUNTIME_DIR not in sys.path:
     sys.path.insert(0, _RUNTIME_DIR)
 
-import local_execution_gate as leg  # noqa: E402
-import local_execution_lease_state as lels  # noqa: E402
-import tool_policy as tp  # noqa: E402
+class _LazyRuntimeModule:
+    """Resolve a protected runtime module only when a caller needs it."""
+
+    def __init__(self, module_name: str) -> None:
+        self._module_name = module_name
+        self._module: Any | None = None
+
+    def load(self) -> Any:
+        if self._module is None:
+            self._module = importlib.import_module(self._module_name)
+        return self._module
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.load(), name)
+
+
+# These modules are part of the protected runtime closure.  Keep them out of
+# module import time so an activation-bound invocation can verify the installed
+# bytes before executing any authority code.
+leg: Any = _LazyRuntimeModule("local_execution_gate")
+lels: Any = _LazyRuntimeModule("local_execution_lease_state")
+tp: Any = _LazyRuntimeModule("tool_policy")
+
+
+def _exec_snapshot_module(
+    module_name: str,
+    relative_path: str,
+    source: bytes,
+    install_dir: str,
+) -> Any:
+    """Execute an in-memory snapshot, never reopening an attested path."""
+    module = types.ModuleType(module_name)
+    module.__file__ = os.path.join(install_dir, relative_path)
+    module.__package__ = ""
+    sys.modules[module_name] = module
+    try:
+        code = compile(source, module.__file__, "exec")
+        exec(code, module.__dict__)
+    except Exception:
+        sys.modules.pop(module_name, None)
+        raise
+    return module
+
+
+def _load_runtime_modules(
+    snapshot: dict[str, bytes] | None = None,
+    install_dir: str | None = None,
+) -> None:
+    """Import authority modules, using attested bytes when activation is active."""
+    global leg, lels, tp
+    if snapshot is not None:
+        module_specs = (
+            ("local_execution_lease", "runtime/local_execution_lease.py"),
+            ("local_execution_lease_state", "runtime/local_execution_lease_state.py"),
+            ("local_execution_gate", "runtime/local_execution_gate.py"),
+            ("tool_policy", "runtime/tool_policy.py"),
+        )
+        modules: dict[str, Any] = {}
+        for module_name, relative_path in module_specs:
+            source = snapshot.get(relative_path)
+            if source is None:
+                raise ImportError(f"attested runtime snapshot is missing {relative_path}")
+            modules[module_name] = _exec_snapshot_module(
+                module_name,
+                relative_path,
+                source,
+                install_dir or _PKG_ROOT,
+            )
+        leg = modules["local_execution_gate"]
+        lels = modules["local_execution_lease_state"]
+        tp = modules["tool_policy"]
+        return
+
+    if not isinstance(leg, _LazyRuntimeModule):
+        return
+    _leg = leg.load()
+    _lels = lels.load()
+    _tp = tp.load()
+
+    leg = _leg
+    lels = _lels
+    tp = _tp
+
+
+def _load_attested_activation_module(
+    snapshot: dict[str, bytes],
+    install_dir: str,
+) -> Any:
+    """Load activation parsing logic from the already-attested byte snapshot."""
+    source = snapshot.get("runtime/activation_updater.py")
+    if source is None:
+        raise ImportError("attested activation snapshot is missing activation_updater.py")
+    return _exec_snapshot_module(
+        "_ume_harness_attested_activation_updater",
+        "runtime/activation_updater.py",
+        source,
+        install_dir,
+    )
 
 _DESTRUCTIVE_CMD_RE = re.compile(r"\b(rm\s+-[rf]+\w*|git\s+reset\s+--hard|drop\s+table|mkfs)\b", re.IGNORECASE)
 _EXTERNAL_CMD_RE = re.compile(r"\b(ssh\s|git\s+push|curl\s+[^|]*-[Xd]|curl\s+[^|]*--data)\b", re.IGNORECASE)
@@ -76,6 +174,7 @@ _SECRET_FILENAMES = frozenset(
         "auth.json",
         "credentials",
         "credentials.json",
+        "rclone.conf",
         "id_dsa",
         "id_ecdsa",
         "id_ed25519",
@@ -148,6 +247,20 @@ _GOVERNANCE_FILENAMES = frozenset(
         "vercel.json",
     }
 )
+_STARTUP_FILENAMES = frozenset(
+    {
+        ".bash_login",
+        ".bash_logout",
+        ".bash_profile",
+        ".bashrc",
+        ".profile",
+        ".zlogin",
+        ".zlogout",
+        ".zprofile",
+        ".zshenv",
+        ".zshrc",
+    }
+)
 _GOVERNANCE_PATH_SUFFIXES = frozenset(
     {
         ("etc", "profile"),
@@ -209,6 +322,9 @@ CLOSURE_FILES = [
     "adapters/claude-code/pretooluse_hook.py",
 ]
 
+_ACTIVATION_MODES = frozenset({"disabled", "canary", "active"})
+_SHA256_HEX_RE = re.compile(r"[0-9a-f]{64}")
+
 
 def _emit(decision: str, reason: str, violation_code: str | None = None, lease_id: str | None = None) -> int:
     result = {
@@ -222,17 +338,74 @@ def _emit(decision: str, reason: str, violation_code: str | None = None, lease_i
     return 0
 
 
-def compute_closure_root_digest(install_dir: str) -> tuple[str | None, str | None]:
-    mapping: dict[str, str] = {}
-    for rel_f in CLOSURE_FILES:
-        p = os.path.join(install_dir, rel_f)
-        if not os.path.exists(p):
-            return None, f"MISSING_CLOSURE_FILE:{rel_f}"
-        with open(p, "rb") as f:
-            mapping[rel_f] = hashlib.sha256(f.read()).hexdigest()
+def _read_snapshot_member(root: str, relative_path: str) -> bytes:
+    """Read one closure member through a no-follow regular-file descriptor."""
+    current = os.path.abspath(root)
+    parts = Path(relative_path).parts
+    for index, part in enumerate(parts):
+        current = os.path.join(current, part)
+        metadata = os.lstat(current)
+        if stat.S_ISLNK(metadata.st_mode):
+            raise ValueError(f"closure path contains a symlink component: {relative_path}")
+        if index < len(parts) - 1 and not stat.S_ISDIR(metadata.st_mode):
+            raise ValueError(f"closure parent is not a directory: {relative_path}")
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(current, flags)
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise ValueError(f"closure member is not a regular file: {relative_path}")
+        chunks: list[bytes] = []
+        while True:
+            chunk = os.read(fd, 1024 * 1024)
+            if not chunk:
+                break
+            chunks.append(chunk)
+        return b"".join(chunks)
+    finally:
+        os.close(fd)
 
-    can_bytes = json.dumps(mapping, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return hashlib.sha256(can_bytes).hexdigest(), None
+
+def _read_closure_snapshot(
+    install_dir: str,
+) -> tuple[dict[str, bytes] | None, str | None, str | None]:
+    snapshot: dict[str, bytes] = {}
+    mapping: dict[str, str] = {}
+    for relative_path in CLOSURE_FILES:
+        try:
+            source = _read_snapshot_member(install_dir, relative_path)
+        except (OSError, ValueError) as exc:
+            return None, None, f"CLOSURE_READ_ERROR:{relative_path}:{exc}"
+        snapshot[relative_path] = source
+        mapping[relative_path] = hashlib.sha256(source).hexdigest()
+    canonical = json.dumps(
+        mapping,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return snapshot, hashlib.sha256(canonical).hexdigest(), None
+
+
+def compute_closure_root_digest(install_dir: str) -> tuple[str | None, str | None]:
+    _snapshot, root, error = _read_closure_snapshot(install_dir)
+    return root, error
+
+
+def _read_activation_header(path: str) -> dict[str, Any] | None:
+    """Read inert activation metadata before importing protected runtime code."""
+    try:
+        with open(path, "r", encoding="utf-8") as activation_file:
+            data = json.load(activation_file)
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    if data.get("mode") not in _ACTIVATION_MODES:
+        return None
+    runtime_root_digest = data.get("runtime_root_digest")
+    if not isinstance(runtime_root_digest, str) or _SHA256_HEX_RE.fullmatch(runtime_root_digest) is None:
+        return None
+    return data
 
 
 def is_safe_readonly_command(cmd_str: str) -> bool:
@@ -266,7 +439,7 @@ def is_safe_readonly_command(cmd_str: str) -> bool:
 
 
 def classify_side_effect(tool_name: str, tool_input: dict) -> tp.SideEffect:
-    if tool_name in ("Glob", "Grep", "WebSearch", "Read"):
+    if tool_name in ("Glob", "Grep", "Read"):
         return tp.SideEffect.READ_ONLY
     if tool_name in ("Edit", "Write", "NotebookEdit"):
         return tp.SideEffect.BOUNDED_WRITE
@@ -281,7 +454,7 @@ def classify_side_effect(tool_name: str, tool_input: dict) -> tp.SideEffect:
         if is_safe_readonly_command(cmd):
             return tp.SideEffect.READ_ONLY
         return tp.SideEffect.UNKNOWN
-    if tool_name in ("WebFetch", "SendMessage"):
+    if tool_name in ("WebFetch", "WebSearch", "SendMessage"):
         return tp.SideEffect.EXTERNAL_MUTATION
     return tp.SideEffect.UNKNOWN
 
@@ -292,7 +465,15 @@ def _classify_policy_path(path: str) -> tp.Tier:
     filename = parts[-1] if parts else ""
     suffix = os.path.splitext(filename)[1]
     process_environment = any(
-        parts[index] == "proc" and parts[index + 2] == "environ"
+        parts[index] == "proc"
+        and (
+            parts[index + 2] == "environ"
+            or (
+                index + 4 < len(parts)
+                and parts[index + 2] == "task"
+                and parts[index + 4] == "environ"
+            )
+        )
         for index in range(len(parts) - 2)
     )
 
@@ -327,6 +508,7 @@ def _classify_policy_path(path: str) -> tp.Tier:
         or any(part.startswith("cron.") for part in parts)
         or any(parts[index : index + 2] == ("etc", "ssh") for index in range(len(parts) - 1))
         or filename in _GOVERNANCE_FILENAMES
+        or filename in _STARTUP_FILENAMES
         or any(parts[-len(path_suffix) :] == path_suffix for path_suffix in _GOVERNANCE_PATH_SUFFIXES)
         or _GOVERNANCE_CONTRACT_RE.search(filename) is not None
         or suffix == ".service"
@@ -557,7 +739,7 @@ def _grep_policy_paths(
         os.path.isabs(glob_filter)
         or glob_filter.startswith("!")
         or "**" in glob_filter
-        or any(char in glob_filter for char in "{}\\")
+        or any(char in glob_filter for char in "{}\\[]")
     ):
         return InvocationPathResolution(tuple(paths), complete=False)
 
@@ -622,6 +804,11 @@ def _git_pathspec_is_ambiguous(pathspec: str) -> bool:
     return pathspec.startswith(":") or ":" in pathspec
 
 
+def _matches_long_option_prefix(token: str, option: str) -> bool:
+    option_name = token.split("=", 1)[0]
+    return option_name.startswith("--") and len(option_name) > 2 and option.startswith(option_name)
+
+
 def _bash_read_paths(tokens: list[str], base_dir: str) -> InvocationPathResolution:
     command = tokens[0]
     if command == "pwd":
@@ -645,16 +832,37 @@ def _bash_read_paths(tokens: list[str], base_dir: str) -> InvocationPathResoluti
                     "--dereference-command-line-symlink-to-dir",
                     "--recursive",
                 }
+                or any(
+                    _matches_long_option_prefix(token, option)
+                    for option in (
+                        "--dereference",
+                        "--dereference-command-line",
+                        "--dereference-command-line-symlink-to-dir",
+                        "--recursive",
+                    )
+                )
                 or (not token.startswith("--") and any(flag in token[1:] for flag in ("L", "R")))
             ):
                 return InvocationPathResolution(tuple(operands or (base_dir,)), complete=False)
-            if command in {"head", "tail"} and token in _HEAD_TAIL_OPTIONS_WITH_VALUE:
+            if command in {"head", "tail"} and (
+                token in _HEAD_TAIL_OPTIONS_WITH_VALUE
+                or any(
+                    _matches_long_option_prefix(token, option)
+                    for option in _HEAD_TAIL_OPTIONS_WITH_VALUE
+                    if option.startswith("--")
+                )
+            ):
+                if "=" in token:
+                    return InvocationPathResolution(tuple(operands or (base_dir,)), complete=False)
                 if index + 1 >= len(tokens):
                     return InvocationPathResolution(tuple(operands or (base_dir,)), complete=False)
                 index += 2
                 continue
-            if command == "wc" and (token == "--files0-from" or token.startswith("--files0-from=")):
-                if token == "--files0-from":
+            wc_files0_from = "--files0-from"
+            if command == "wc" and (
+                _matches_long_option_prefix(token, wc_files0_from)
+            ):
+                if "=" not in token:
                     if index + 1 >= len(tokens):
                         return InvocationPathResolution(tuple(operands or (base_dir,)), complete=False)
                     operands.append(tokens[index + 1])
@@ -902,9 +1110,11 @@ def evaluate_invocation(
 ) -> tuple[int, str | None]:
     if not isinstance(data, dict):
         return 2, "[ume-harness Lease Gate] hook input must be an object (INVALID_HOOK_INPUT)\n"
-    tool_name = data.get("tool_name", "")
+    if "tool_name" not in data:
+        return 2, "[ume-harness Lease Gate] tool_name is required (INVALID_HOOK_INPUT)\n"
+    tool_name = data.get("tool_name")
     tool_input = data.get("tool_input", {})
-    if not isinstance(tool_name, str) or not isinstance(tool_input, dict):
+    if not isinstance(tool_name, str) or not tool_name.strip() or not isinstance(tool_input, dict):
         return 2, "[ume-harness Lease Gate] malformed tool invocation (INVALID_HOOK_INPUT)\n"
     path_like_values = (
         data.get("cwd"),
@@ -951,26 +1161,53 @@ def evaluate_invocation(
 
     # 1. Verification of activation & closure integrity if activation state exists
     activation_file = os.path.join(state_dir, "activation.json")
-    if os.path.exists(activation_file):
+    attested_snapshot: dict[str, bytes] | None = None
+    if os.path.lexists(activation_file):
         try:
-            with open(activation_file, "r", encoding="utf-8") as af:
-                act = json.load(af)
-            act_mode = act.get("mode", "disabled")
-            if act_mode == "disabled":
+            # Parse only inert JSON metadata first. Do not import the protected
+            # activation helper until the installed closure has been verified.
+            activation_header = _read_activation_header(activation_file)
+            if activation_header is None:
+                return 2, "[ume-harness Lease Gate] activation state is missing or invalid (ACTIVATION_ERROR)\n"
+            expected_root = activation_header["runtime_root_digest"]
+            if not os.path.isdir(install_dir):
+                return 2, "[ume-harness Lease Gate] installed runtime is missing (ACTIVATION_TAMPER)\n"
+            attested_snapshot, actual_root, err = _read_closure_snapshot(install_dir)
+            if err or actual_root != expected_root or attested_snapshot is None:
+                return 2, f"[ume-harness Lease Gate] runtime tamper or digest mismatch detected (ACTIVATION_TAMPER)\n"
+
+            # The byte identity is now proven, so load the canonical schema
+            # parser from that same attested install tree.  Do not resolve it
+            # from the executing runner's sys.path.
+            activation = _load_attested_activation_module(attested_snapshot, install_dir)
+
+            act = activation.read_activation_state(activation_file)
+            if act is None:
+                return 2, "[ume-harness Lease Gate] activation state is missing or invalid (ACTIVATION_ERROR)\n"
+            if act["runtime_root_digest"] != expected_root:
+                return 2, "[ume-harness Lease Gate] activation state changed during verification (ACTIVATION_TAMPER)\n"
+            if act["mode"] == "disabled":
                 return 2, "[ume-harness Lease Gate] lease gate is disabled by administrator (DISABLED_BY_ADMIN)\n"
-            if act_mode not in ("canary", "active"):
-                return 2, f"[ume-harness Lease Gate] unsupported activation mode: {act_mode} (UNSUPPORTED_ACTIVATION_MODE)\n"
-            expected_root = act.get("runtime_root_digest")
-            if expected_root and os.path.exists(install_dir):
-                actual_root, err = compute_closure_root_digest(install_dir)
-                if err or actual_root != expected_root:
-                    return 2, f"[ume-harness Lease Gate] runtime tamper or digest mismatch detected (ACTIVATION_TAMPER)\n"
         except Exception as e:
             return 2, f"[ume-harness Lease Gate] activation error: {e} (ACTIVATION_ERROR)\n"
 
+    try:
+        # No protected runtime module may execute before the activation-bound
+        # closure check above.  Unactivated legacy operation keeps its prior
+        # behavior and loads the same modules here before evaluation.
+        _load_runtime_modules(attested_snapshot, install_dir)
+    except Exception as exc:
+        return 2, f"[ume-harness Lease Gate] protected runtime unavailable: {exc} (RUNTIME_IMPORT_ERROR)\n"
+
     if gate is None:
         try:
-            gate = leg.create_default_gate(domain_resolver=default_domain_resolver)
+            gate = leg.create_default_gate(
+                domain_resolver=default_domain_resolver,
+                # invocation_policy() below is the adapter's canonical host
+                # policy decision.  The explicit bridge keeps Core's default
+                # fail-closed while preserving that already-evaluated boundary.
+                policy_evaluator=lambda _policy, _path, _action: True,
+            )
         except Exception:
             gate = None
 

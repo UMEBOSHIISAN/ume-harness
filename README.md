@@ -4,16 +4,25 @@
 
 # UME-HARNESS (Portable Edition)
 
-> **Deterministic Local Work Governance for AI Coding Agents**
-> Portable Local-Execution Policy / Host Adapter + local Japanese safety-explanation surface (Translation Konjac)
-> 日本人の非エンジニアが自然な日本語で安全に仕事を任せられる、オープンソースの
-> ローカル作業の確認・安全判定基盤および作業ツリー実行権限制御アダプタ。
+> **Local work governance for AI coding agents with fail-closed permission and worktree gates**
+> Preview intended local work, keep active work inside its worktree, and require approval
+> before external or destructive actions. Claude Code is the first integrated and validated host adapter.
 
-## 📌 現在のステータス（v0.1.2・generated public release mirror）
+> **Japanese-first local work governance for AI coding agents**
+> UME-HARNESSは、人間の曖昧な依頼を、何を予定し、何に確認が必要かを実行前に確認できる
+> 作業プレビューへ整理します。ホストアダプタを通じて、決定論的なworktree・capability境界を
+> 検証します。
+> 現在、Claude Codeが最初の統合・検証済みホストアダプタです。
+> 非エンジニア向けの導入しやすさは検証中です。
+
+## 📌 現在のステータス（Technical Preview / v0.1.3・generated public release mirror）
 
 - **製品の位置づけ**:
-  本パッケージは、local `tool_policy` / Lease Gate を提供する **HOST_ADAPTER** と、
-  技術イベントを平易な日本語へ変換する Presentation adapter です。canonical な外部
+  UME-HARNESSは、AI coding agentsへローカル作業を任せるためのHuman Layerと
+  Local Work Governanceを提供します。task intake・作業プレビュー・`tool_policy`・Lease Gateの意味論は
+  特定ホストに固定しないコアとして設計され、現在のreleaseではClaude Code用の
+  **HOST_ADAPTER**が最初の統合・検証済み実装です。追加のホストアダプタは、実装と独立した
+  試験が完了するまで対応済みとは主張しません。canonical な外部
   Action Authority / FrozenAction は所有せず、外部 Authority は Mothership が所有します。
   三製品の境界は **UME-HARNESS = Local Work Plane**、
   **UME Presence = Human-facing Presence Plane**、
@@ -21,6 +30,9 @@
   Harness内のpresentation-onlyな安全説明面であり、UME Presenceやauthority sourceではありません。
   三製品間のruntime integrationはありません。
   **※ 完全自動で外部操作まで完結する Turnkey 秘書アプリや、無人自律実行エンジンではありません。**
+- **Host adapter status**: Claude Code is the first integrated and validated host adapter.
+  Additional host adapters are not claimed until independently implemented and tested.
+- **Boundary**: UME-HARNESS is not an operating-system sandbox.
 - **Semantic interpretation**: CLIはClaude Sonnet 5を呼ぶ構成です。ただし現行releaseから
   raw semantic runへ到達できないため、モデル精度を「保証」とは表現しません。
   Gemma 4:12bはv0 CLI経路の対象外です（詳細: `SUPPORT_MATRIX.md`）。
@@ -50,13 +62,49 @@ UME Stackは、ローカル作業・外部へ影響する権限・人間向け�
 Each product is independently usable. The shared architecture defines responsibility boundaries.
 It does not imply automatic runtime integration.
 
+UME-HARNESS is the Local Work Plane only. UME Presence is a presentation-only
+surface with `authority = NONE`; this release does not claim that Presence has
+a machine-enforced prohibition on producing verified execution state
+(`UNKNOWN` in this conformance scope). Supporting Source Health, Evidence
+Spine, Run Lineage, and Agent Decision components are separate references, not
+runtime integrations supplied by this release.
+
 ---
+
+## Boundary model (current v0)
+
+The shared semantic model is:
+
+```text
+OBSERVE → PROPOSE → APPROVE → EXECUTE → VERIFY
+```
+
+For UME-HARNESS, `PROPOSE` means a local work preview. Local human confirmation
+and site-policy eligibility are conceptually separate prerequisites; neither
+creates or carries External Action Authority. The implemented
+`LocalExecutionGate` enforces lease, worktree, path, and injected
+policy-evaluator checks. The current Claude adapter blocks
+`APPROVAL_REQUIRED`, but confirmation-token issue/consume/resume for the same
+operation remains unwired; this release does not claim a combined approved
+gate path.
+
+There is no `ConsequenceProposal` producer in v0. Harness has local intent,
+task, policy, and lease facts only. It must not infer an exact external
+operation, target, or mutable preconditions from those facts. Mothership owns
+the external consequence-proposal intake schema. Receipt and verification are
+also outside this repository's runtime boundary, and the three products have
+no automatic runtime integration.
+
+`EXECUTE` and `VERIFY` in the shared model therefore refer to separately owned
+future planes, not to a claim that UME-HARNESS performs or verifies external
+mutations. Local success and local verification facts are not external truth.
 
 ## 🌟 主な特徴
 
-1. **日本人の非エンジニア向け UX（Japanese Human Layer）**:
-   「これいい感じにしといて」「前みたいにお願い」といった曖昧な指示を安全に解釈。
-   専門用語を画面に出さず、「やること / しないこと」を自然語で提示。
+1. **日本語での範囲説明（Japanese Human Layer）**:
+   「これいい感じにしといて」「前みたいにお願い」といった曖昧な依頼を、
+   「やること / 確認すること / しないこと」へ分けて自然語で提示します。
+   非エンジニア向けの導入しやすさは検証中です。
 2. **確認の一括化（clarification / confirmation batching）**:
    不足情報を細切れに質問せず、最初に1回でまとめて確認。
 3. **Authority Overlay & Local Execution Lease**:
@@ -71,6 +119,13 @@ It does not imply automatic runtime integration.
 この機能をClaude host上でenforcedとは主張しません。
 `test` capabilityと`test_profile`もLease stateへ保存されますが、profileから許可コマンドへ
 変換するClaude host mappingは未実装です。未知のtest commandは承認要求のままです。
+
+### Local approval vocabulary
+
+Internal compatibility token meanings and their deprecation scope are defined
+in [`contracts/authority_contract.md`](contracts/authority_contract.md). They
+are local-only compatibility vocabulary, not end-user UX or External Action
+Authority.
 
 ---
 
@@ -100,13 +155,13 @@ cd ume-harness
 上記public repositoryは利用者向けgenerated release mirrorです。変更の正本は
 `ume-harness-engineering`であり、public mirrorを編集元にはしません。
 
-v0.1.1からv0.1.2へ更新する場合は、新しいsource checkout内で旧releaseを先に取り外してから
+v0.1.2からv0.1.3へ更新する場合は、新しいsource checkout内で旧releaseを先に取り外してから
 インストールします。`--force`は同一versionの検証済みinstall専用で、cross-version更新には使いません。
 `SETTINGS_PATH`には、setup時に指定したものと同じsettings fileを設定してください。
 
 ```bash
 SETTINGS_PATH="${HOME}/.claude/settings.json" # custom pathを使った場合は同じ値へ置換
-./scripts/uninstall.sh --version v0.1.1 --settings-path "${SETTINGS_PATH}" --yes
+./scripts/uninstall.sh --version v0.1.2 --settings-path "${SETTINGS_PATH}" --yes
 ./scripts/install.sh
 ```
 
@@ -167,7 +222,7 @@ ume-harness --llm-output-file <path-to-json>
 
 インストール状態の診断（ヘルスチェック）:
 ```bash
-python3 ~/.local/lib/ume-harness/v0.1.2/scripts/health_check.py
+python3 ~/.local/lib/ume-harness/v0.1.3/scripts/health_check.py
 # または、リポジトリ内から:
 python3 ./scripts/health_check.py
 ```
@@ -208,6 +263,23 @@ payload/CLI/owned hooksの消滅、無関係Claude設定の保持、user state�
 ---
 
 ## ⚠️ 既知の制約（Known Limitations）
+
+- 有効なactivation stateがある場合、v0.1.3はprotected-runtime closureを検証してからauthority moduleを
+  実行します。activation stateがないlegacy operationではこのclosure検証は適用されません。host
+  entrypointとgate前に読み込むpresentation-only importはtrusted prerequisiteです。
+- OS pseudo-fileのsecret検出は未網羅です。`/proc/<pid>/environ`形式は拒否しますが、その他の`/proc`や
+  `/dev/fd`をsecretとして分類する保証はなく、Linux/POSIXは未検証です。
+- install provenanceはtrusted canonical/generated-release checkoutを前提とします。`install.sh`単体は
+  独立した署名検証器ではありません。
+
+### Future deployment extension points (not implemented)
+
+Identity/role providers, human-ceremony adapters, domain policy and action
+profiles, external executors and verifiers, external audit anchors, and
+obligation/follow-up handlers remain separate future extension points. No
+identity authentication, RBAC, executor, verifier producer, delegation
+framework, or obligation engine is implemented here. External authority
+delegation is forbidden by default.
 
 ```yaml
 overwrite_is_destructive:

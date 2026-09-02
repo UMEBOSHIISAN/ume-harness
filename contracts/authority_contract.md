@@ -61,11 +61,46 @@ ume-harnessは、自身のLocal Work Planeにおけるsemantic ownerである。
 - Agent Frontdoorのようなhistorical external producerはcompatible referenceを供給できるが、Harness runtimeはAgent Frontdoorを必要としない。
 - historicalなWorkflow Governance Model (WGM) / Mothership Routerとの関係はcompatibility / historyであり、現在のtop-level architectureやruntime dependencyではない。
 - Mothershipはconsequential Decision SurfaceとExternal Action Authorityの境界を所有するが、local worker executionを所有しない。
-- External bounded executorはactual external effectとreceipt / verification evidenceの生成を担う。Mothershipによるpost-action evidenceの受領・照合・検証は、現行runtime behaviorとして本契約ではclaimしない。
+- External bounded executorはactual external effectを実行し、`ExternalActionReceipt`を生成する。別のread-only Verifierが`ExternalActionVerification`を生成する。Mothershipによるpost-action evidenceの受領・照合・検証は、現行runtime behaviorとして本契約ではclaimしない。
 - host gateはHarness-owned local semanticsをruntimeでenforceし、Claude/Codex adapterは接続形式だけを担当する。どちらもLocalExecutionLeaseから外部authorityを生成・伝播しない。
 
 LocalExecutionLeaseのbind対象はvalidated bounded local task identityへの参照であり、
 新しいtask SSOTでも、Mothershipのconsequential authorityでもない。
+
+### Consequential boundary (v0)
+
+The shared semantic model is:
+
+```text
+OBSERVE → PROPOSE → APPROVE → EXECUTE → VERIFY
+```
+
+For this repository, `PROPOSE` is limited to a local work preview. Local human
+confirmation and site-policy eligibility are conceptually separate
+prerequisites; neither creates or carries External Action Authority. The
+implemented `LocalExecutionGate` evaluates lease, worktree, domain/path, and
+an injected `policy_evaluator`. The current Claude adapter blocks
+`APPROVAL_REQUIRED`, but confirmation-token issue/consume/resume for the same
+operation remains unwired. This contract therefore does not claim a combined
+approved gate path. The lease, gate, local work result, and local verification
+facts do not create or carry External Action Authority.
+
+There is no `ConsequenceProposal` producer in v0. Harness has local intent,
+task, policy, and lease facts only; it must not infer an exact external
+operation, target, or mutable preconditions from them. Mothership owns the
+external consequence-proposal intake schema. Harness does not produce an
+external executor receipt or an independent external verification record.
+
+Any future external-action workflow is separately owned: a consumed exact
+authority is passed to a bounded `Executor`, which emits an
+`ExternalActionReceipt`; an independent read-only `Verifier` emits an
+`ExternalActionVerification`. Harness owns neither producer.
+
+The shared Source Health, Evidence Spine, Run Lineage, and Agent Decision
+components remain separate references and are not runtime dependencies of
+this release. UME Presence remains presentation-only with `authority = NONE`;
+this contract does not claim a machine-enforced prohibition on Presence
+producing verified execution state (`UNKNOWN` in this conformance scope).
 
 ### Local Workspace Preparation
 
@@ -124,6 +159,10 @@ TIER_RUNTIME_CODE   既定 = explicit approval required（人間の明示承認�
 TIER_NORMAL          自由に書込可（docs / tasks / memory 相当）
 ```
 
+Any adapter option described as local workflow delegation is not External
+Action Authority delegation. For v0, consequential authority delegation is
+forbidden: no agent-to-agent authority inheritance or delegation token exists.
+
 > 訂正（2026-08-18 human裁定）: 元になった個人実装では `TIER_RUNTIME_CODE` の既定動作が
 > 「別worker（Codex相当）への委譲が正路」という特定の運用思想に固定されていた。これは
 > Portable Core が他人の開発フローを縛ることになるため、Core の既定は
@@ -140,6 +179,24 @@ EXECUTION_GATE_APPROVED:<path>
 DEPLOY_APPROVED:<target>
 AUTONOMY_APPROVED:<class>:<level>:<review_date>
 ```
+
+The current meanings are deliberately narrow and compatibility-oriented:
+
+- `EDIT_APPROVED:<path>` — `COMPATIBILITY_ONLY` for local work.
+- `EXECUTION_GATE_APPROVED:<path>` — `LOCAL_ONLY_SEMANTIC` for local gate handling.
+- `DEPLOY_APPROVED:<target>` — `DEPRECATED_FOR_NEW_CODE` for new Harness code;
+  it is not a Harness external-authority path.
+- `AUTONOMY_APPROVED:<class>:<level>:<review_date>` —
+  `DEPRECATED_FOR_NEW_CODE` for new Harness code; it is not a Harness
+  external-authority path.
+
+These names are retained where compatibility requires them; do not delete or
+promote them into a canonical external-authority mechanism. Local approval,
+local policy eligibility, and LocalExecutionLease remain distinct from
+external consequence authority. A future identity/role provider, human
+ceremony adapter, domain policy/action profile, executor, verifier, external
+audit anchor, or obligation handler is an extension point, not part of this
+contract.
 
 ### Human UX → Canonical Token 変換フロー（アーキテクチャ境界）
 

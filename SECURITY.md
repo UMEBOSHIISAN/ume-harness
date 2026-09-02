@@ -35,14 +35,15 @@ Task text, model-produced candidate actions, tool invocation payloads, paths, sh
 and persisted Lease records can be malformed or attacker-influenced inputs. The gate must not silently broaden authority
 from those inputs.
 
-The local operating-system account, the installed host entrypoint, and the owner-controlled state directory are trusted
-host prerequisites. Release provenance depends on the canonical repository, explicit promotion closure, and generated
-release identity.
+The local operating-system account, the installed host entrypoint, presentation-only imports loaded before gate
+verification, and the owner-controlled state directory are trusted host prerequisites. Release provenance depends on the
+canonical repository, explicit promotion closure, and generated release identity.
 
 ## Security Invariants
 
 - Unknown or malformed side effects fail closed to `APPROVAL_REQUIRED` or `DENY`; they never become silent `ALLOW`.
-- Secret paths remain denied, including reads, and a Lease never grants secret or external-mutation capability.
+- Recognized secret paths remain denied, including reads, and a Lease never grants secret or external-mutation
+  capability. OS pseudo-file coverage is limited as documented below.
 - An active Lease cannot authorize work outside its bound real worktree or inside protected `.ume-harness/**` control
   paths.
 - Path traversal, ambiguous multi-worktree selection, unsupported shell composition, and unproven command/path scope do
@@ -94,6 +95,19 @@ residual risk. Actual Claude Code tool invocations are evaluated separately by t
 does not call the observer-backed operation lifecycle. A stored `test_profile` does not map to an executable command
 allowlist, and an unknown test command remains approval-required. Native Windows is unsupported; Linux/POSIX remains
 expected but unverified for the current release evidence.
+
+When a valid activation state exists, v0.1.3 attests the explicit protected-runtime closure before protected authority
+modules execute. Without activation state, the legacy path does not enforce that closure attestation. The trusted host
+entrypoint and presentation-only imports loaded before gate verification remain prerequisites; this is not universal
+attestation of every ambient or imported module.
+
+Secret-path classification is not complete for operating-system pseudo-files. `/proc/<pid>/environ` forms are denied,
+but other `/proc` and `/dev/fd` descriptor paths are not guaranteed to be classified as secrets. Linux/POSIX remains
+unverified.
+
+Direct installation from an untrusted or modified checkout is not an independent provenance guarantee. Use a trusted
+canonical or generated-release checkout; independent anchors are enforced by release-promotion and owned-install
+verification gates.
 
 ## Response and Disclosure Process
 
