@@ -41,7 +41,10 @@ def evaluate_invocation(
 def main() -> int:
     raw = sys.stdin.read()
     if not raw.strip():
-        return 0
+        sys.stderr.write(
+            "[ume-harness pretooluse_hook] empty stdin rejected (INVALID_HOOK_INPUT)\n"
+        )
+        return 2
     try:
         data = json.loads(raw)
     except Exception as e:

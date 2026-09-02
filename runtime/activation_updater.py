@@ -7,6 +7,7 @@ import fcntl
 import hashlib
 import json
 import os
+import re
 import sys
 from datetime import datetime, timezone
 from typing import Any
@@ -21,6 +22,7 @@ LOCK_FILE = os.path.join(STATE_DIR, "activation.lock")
 VALID_MODES = {"disabled", "canary", "active"}
 SCHEMA_VERSION = "local-execution-lease-activation.v0"
 PINNED_POLICY_SHA256 = "4b7b686d08014a60124ad9024f0c4392e2ebf443b7f2f1fc4d88e8941cfb5443"
+_SHA256_RE = re.compile(r"[0-9a-f]{64}")
 
 CLOSURE_FILES = [
     "domain_descriptor.json",
@@ -65,18 +67,35 @@ def compute_installed_root_digest(install_dir: str | None = None) -> str:
     return hashlib.sha256(canonical_b).hexdigest()
 
 
-def read_activation_state() -> dict[str, Any] | None:
-    """Read and validate the current activation state file (read-only)."""
-    if not os.path.exists(ACTIVATION_FILE):
+def read_activation_state(path: str | os.PathLike[str] | None = None) -> dict[str, Any] | None:
+    """Read and strictly validate an activation state file (read-only).
+
+    ``None`` means the file is absent or invalid. Callers that need to
+    distinguish those cases must check ``os.path.lexists`` before calling.
+    """
+    activation_file = os.fspath(path) if path is not None else ACTIVATION_FILE
+    if not os.path.exists(activation_file):
         return None
     try:
-        with open(ACTIVATION_FILE, "r", encoding="utf-8") as f:
+        with open(activation_file, "r", encoding="utf-8") as f:
             data = json.load(f)
         if not isinstance(data, dict):
             return None
         if data.get("schema") != SCHEMA_VERSION:
             return None
         if data.get("mode") not in VALID_MODES:
+            return None
+        if (
+            isinstance(data.get("generation"), bool)
+            or not isinstance(data.get("generation"), int)
+            or data["generation"] < 1
+            or not isinstance(data.get("runtime_root_digest"), str)
+            or _SHA256_RE.fullmatch(data["runtime_root_digest"]) is None
+            or not isinstance(data.get("policy_sha256"), str)
+            or _SHA256_RE.fullmatch(data["policy_sha256"]) is None
+            or not isinstance(data.get("updated_at"), str)
+            or not data["updated_at"].strip()
+        ):
             return None
         return data
     except Exception:

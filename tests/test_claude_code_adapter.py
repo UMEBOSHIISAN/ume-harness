@@ -170,6 +170,11 @@ def test_unmanaged_protected_paths_use_canonical_tier() -> None:
             ("Kubernetes auth config read", {"tool_name": "Read", "tool_input": {"file_path": os.path.join(td, ".kube", "config")}}, 2),
             ("process environment read", {"tool_name": "Read", "tool_input": {"file_path": "/proc/self/environ"}}, 2),
             ("process environment Bash read", {"tool_name": "Bash", "tool_input": {"command": "cat /proc/1/environ"}}, 2),
+            ("nested process environment read", {"tool_name": "Read", "tool_input": {"file_path": "/proc/1/task/1/environ"}}, 2),
+            ("rclone config read", {"tool_name": "Read", "tool_input": {"file_path": os.path.join(td, ".config", "rclone", "rclone.conf")}}, 2),
+            ("zsh startup file edit", {"tool_name": "Edit", "tool_input": {"file_path": os.path.join(td, ".zshrc")}}, 2),
+            ("bash startup file edit", {"tool_name": "Edit", "tool_input": {"file_path": os.path.join(td, ".bashrc")}}, 2),
+            ("POSIX startup file edit", {"tool_name": "Edit", "tool_input": {"file_path": os.path.join(td, ".profile")}}, 2),
             ("credentials directory read", {"tool_name": "Read", "tool_input": {"file_path": os.path.join(td, "credentials", "token.txt")}}, 2),
             ("singular secret directory read", {"tool_name": "Read", "tool_input": {"file_path": os.path.join(td, "secret", "token.txt")}}, 2),
             ("keys directory read", {"tool_name": "Read", "tool_input": {"file_path": os.path.join(td, "keys", "api.txt")}}, 2),
@@ -303,6 +308,7 @@ def test_bash_read_operands_are_resolved_or_fail_closed() -> None:
                 "APPROVAL_REQUIRED",
             ),
             ("indirect wc file list", "wc --files0-from=/outside/list", "APPROVAL_REQUIRED"),
+            ("abbreviated indirect wc file list", "wc --files0-f=/outside/list", "APPROVAL_REQUIRED"),
             ("shell previous-directory expansion", "cat ~-/normal.txt", "APPROVAL_REQUIRED"),
             ("known head option value", "head -n 5 normal.txt", "ALLOW"),
         )
@@ -331,6 +337,8 @@ def test_ls_recursive_or_dereference_options_fail_closed() -> None:
             "ls -Ra .",
             "ls -lR .",
             "ls --recursive .",
+            "ls --rec .",
+            "ls --de .",
             "ls -RL .",
             "ls -lL .",
             "ls --dereference .",
@@ -420,6 +428,19 @@ def test_restrictive_grep_glob_caps_matching_paths_not_unrelated_tree() -> None:
             hook.runner._MAX_GLOB_POLICY_MATCHES = original_cap
 
         check("restrictive Grep remains provably ALLOW", decision.value == "ALLOW", f"got {decision}")
+
+
+def test_grep_glob_character_class_mismatch_fails_closed() -> None:
+    print("\n[Grep Filter] Host character-class glob semantics must not be under-approximated")
+    with tempfile.TemporaryDirectory() as td:
+        resolution = hook.runner._grep_policy_paths(td, td, "[^a]*")
+        _side_effect, _tiers, decision = hook.runner.invocation_policy(
+            "Grep",
+            {"path": td, "pattern": "needle", "glob": "[^a]*"},
+            td,
+        )
+        check("character-class glob is incomplete", not resolution.complete)
+        check("character-class glob cannot ALLOW", decision.value != "ALLOW", f"got {decision}")
 
 
 def test_recursive_policy_expansion_caps_visited_entries() -> None:
@@ -597,10 +618,34 @@ def test_webfetch_blocked_as_external_mutation() -> None:
     check("exit 2", p.returncode == 2, f"got {p.returncode}")
 
 
+def test_websearch_requires_approval_as_external_mutation() -> None:
+    print("\n[BLOCK] WebSearch (EXTERNAL_MUTATION) -> exit 2")
+    p = run_hook_subproc({"tool_name": "WebSearch", "tool_input": {"query": "security"}})
+    check("WebSearch exit 2", p.returncode == 2, f"got {p.returncode}")
+    check("WebSearch is classified as external mutation", "EXTERNAL_MUTATION" in p.stderr, f"stderr={p.stderr!r}")
+
+
 def test_malformed_json_input_fails_closed() -> None:
     print("\n[fail-closed] 壊れたJSON入力 -> exit 2（無言で許可しない）")
     p = subprocess.run([sys.executable, _HOOK_PATH], input="not json{{{", capture_output=True, text=True)
     check("exit 2", p.returncode == 2, f"got {p.returncode}")
+
+
+def test_missing_tool_name_fails_closed_as_invalid_hook_input() -> None:
+    print("\n[fail-closed] tool_name欠落・空・null -> INVALID_HOOK_INPUT")
+    with tempfile.TemporaryDirectory() as td:
+        for payload in (
+            {},
+            {"tool_name": "", "tool_input": {}},
+            {"tool_name": None, "tool_input": {}},
+        ):
+            p = run_hook_subproc(payload, env={"UME_HARNESS_STATE_DIR": td})
+            check(f"{payload!r} exits 2", p.returncode == 2, f"got {p.returncode}")
+            check(
+                f"{payload!r} reports INVALID_HOOK_INPUT",
+                "INVALID_HOOK_INPUT" in p.stderr,
+                f"stderr={p.stderr!r}",
+            )
 
 
 def test_malformed_tool_paths_fail_closed_without_traceback() -> None:
@@ -666,10 +711,40 @@ def test_malformed_tool_paths_fail_closed_without_traceback() -> None:
             check(f"{tool_name} NUL input has no traceback", "Traceback" not in proc.stderr)
 
 
-def test_empty_stdin_allowed() -> None:
-    print("\n[edge case] 空stdin -> exit 0（Claude Codeの一部イベントでtool情報が無いケースを想定）")
+def test_empty_stdin_denied_fail_closed() -> None:
+    print("\n[edge case] 空stdin -> exit 2 + fail-closed reason")
     p = subprocess.run([sys.executable, _HOOK_PATH], input="", capture_output=True, text=True)
-    check("exit 0", p.returncode == 0, f"got {p.returncode}")
+    check("empty stdin exits 2", p.returncode == 2, f"got {p.returncode}")
+    check("empty stdin explains fail-closed input rejection", "INVALID_HOOK_INPUT" in p.stderr, f"stderr={p.stderr!r}")
+
+
+def test_activation_state_without_runtime_digest_fails_closed() -> None:
+    print("\n[Activation Integrity] active state without runtime digest -> exit 2")
+    with tempfile.TemporaryDirectory() as td:
+        activation_path = os.path.join(td, "activation.json")
+        with open(activation_path, "w", encoding="utf-8") as activation:
+            json.dump(
+                {
+                    "schema": "local-execution-lease-activation.v0",
+                    "mode": "active",
+                },
+                activation,
+            )
+
+        code, err = hook.evaluate_invocation(
+            {"tool_name": "Read", "tool_input": {"file_path": "/tmp/ordinary.txt"}},
+            gate=leg.create_default_gate(
+                state_path=os.path.join(td, "leases.json"),
+                domain_resolver=lambda _: None,
+            ),
+            state_dir=td,
+        )
+        check("active activation without digest exits 2", code == 2, f"got {code}")
+        check(
+            "missing activation digest reports activation error",
+            err is not None and "ACTIVATION_ERROR" in err,
+            f"err={err!r}",
+        )
 
 
 # --- 2. Lease Gate 連携テスト (Phase 3A) ---
@@ -1722,6 +1797,7 @@ def main() -> None:
     test_ls_recursive_or_dereference_options_fail_closed()
     test_cwd_sensitive_and_git_reads_fail_closed_for_protected_paths()
     test_restrictive_grep_glob_caps_matching_paths_not_unrelated_tree()
+    test_grep_glob_character_class_mismatch_fails_closed()
     test_recursive_policy_expansion_caps_visited_entries()
     test_grep_globs_never_under_approximate_secret_matches()
     test_glob_brace_expansion_never_under_approximates_secret_matches()
@@ -1732,9 +1808,12 @@ def main() -> None:
     test_unrecognized_bash_fails_closed()
     test_unrecognized_tool_fails_closed()
     test_webfetch_blocked_as_external_mutation()
+    test_websearch_requires_approval_as_external_mutation()
     test_malformed_json_input_fails_closed()
+    test_missing_tool_name_fails_closed_as_invalid_hook_input()
     test_malformed_tool_paths_fail_closed_without_traceback()
-    test_empty_stdin_allowed()
+    test_empty_stdin_denied_fail_closed()
+    test_activation_state_without_runtime_digest_fails_closed()
     test_lease_gate_managed_domain_with_active_lease_allowed()
     test_test_only_lease_does_not_invent_host_command_authority()
     test_active_lease_cannot_override_constitution_or_execution_gate_tiers()

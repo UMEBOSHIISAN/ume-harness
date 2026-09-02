@@ -11,8 +11,10 @@ japanese-human-layer の実LLM behavioral test（Phase 3）はここに含めな
 """
 
 import json
+import multiprocessing
 import os
 import re
+import stat
 import subprocess
 import sys
 import tempfile
@@ -22,6 +24,24 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 
 import tool_policy as tp  # noqa: E402
 import stop_adapter as sa  # noqa: E402
+
+
+def _consume_token_with_load_delay(store_path, start_barrier, result_queue):
+    """Synchronize consumers so an unlocked read-modify-write is observable."""
+    store = tp.TokenStore(store_path)
+    original_load = store._load
+
+    def delayed_load():
+        data = original_load()
+        time.sleep(0.2)
+        return data
+
+    store._load = delayed_load
+    start_barrier.wait()
+    try:
+        result_queue.put(("result", store.consume("impl_write", "scope")))
+    except Exception as exc:  # pragma: no cover - surfaced by the parent assertion
+        result_queue.put(("error", repr(exc)))
 
 PASS = 0
 FAIL = 0
@@ -142,6 +162,240 @@ def test_token_store_expired_token_not_consumed():
         store = tp.TokenStore(store_path)
         ok = store.consume("impl_write")
         check("consume() returns False for expired-only tokens", ok is False)
+
+
+def test_token_store_rejects_unscoped_token_for_scoped_consume():
+    print("\n[tool_policy] scopeなしの保存tokenはscoped consumeのwildcardにならない")
+    with tempfile.TemporaryDirectory() as d:
+        store_path = os.path.join(d, "tokens.json")
+        now = int(time.time())
+        with open(store_path, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "tokens": [
+                        {
+                            "action": "impl_write",
+                            "scope_target": None,
+                            "expires_epoch": now + 1000,
+                            "uses_remaining": 1,
+                        }
+                    ]
+                },
+                f,
+            )
+
+        store = tp.TokenStore(store_path)
+        check(
+            "scoped consume rejects null-scope token",
+            store.consume("impl_write", "scope") is False,
+        )
+        with open(store_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        check(
+            "rejected null-scope token remains unused",
+            data["tokens"][0]["uses_remaining"] == 1,
+        )
+
+
+def test_token_store_rejects_malformed_documents_without_authorizing():
+    print("\n[tool_policy] malformed token storeは例外経由でもALLOWしない")
+    malformed_documents = [
+        ("{not-json", "invalid JSON"),
+        ([], "non-object root"),
+        ({"tokens": {}}, "tokens is not an array"),
+        (
+            {
+                "tokens": [
+                    {
+                        "action": "impl_write",
+                        "scope_target": "scope",
+                        "expires_epoch": "future",
+                        "uses_remaining": 1,
+                    }
+                ]
+            },
+            "invalid expiry type",
+        ),
+        (
+            {
+                "tokens": [
+                    {
+                        "action": "impl_write",
+                        "scope_target": "scope",
+                        "expires_epoch": int(time.time()) + 1000,
+                        "uses_remaining": -1,
+                    }
+                ]
+            },
+            "negative remaining uses",
+        ),
+    ]
+
+    with tempfile.TemporaryDirectory() as d:
+        for document, label in malformed_documents:
+            store_path = os.path.join(d, f"{label.replace(' ', '_')}.json")
+            with open(store_path, "w", encoding="utf-8") as f:
+                if isinstance(document, str):
+                    f.write(document)
+                else:
+                    json.dump(document, f)
+            check(
+                f"{label} fails closed",
+                tp.TokenStore(store_path).consume("impl_write", "scope") is False,
+            )
+
+
+def test_token_store_rejects_symlink_and_hardlink_aliases():
+    print("\n[tool_policy] token storeのsymlink/hardlink別名はlock迂回になるため拒否する")
+    now = int(time.time()) + 1000
+
+    with tempfile.TemporaryDirectory() as d:
+        real_path = os.path.join(d, "tokens.json")
+        alias_path = os.path.join(d, "tokens-symlink.json")
+        with open(real_path, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "tokens": [
+                        {
+                            "action": "impl_write",
+                            "scope_target": "scope",
+                            "expires_epoch": now,
+                            "uses_remaining": 1,
+                        }
+                    ]
+                },
+                f,
+            )
+        os.symlink(real_path, alias_path)
+        check(
+            "symlink alias fails closed",
+            tp.TokenStore(alias_path).consume("impl_write", "scope") is False,
+        )
+        with open(real_path, "r", encoding="utf-8") as f:
+            check("symlink alias leaves canonical token untouched", json.load(f)["tokens"][0]["uses_remaining"] == 1)
+
+    with tempfile.TemporaryDirectory() as d:
+        real_path = os.path.join(d, "tokens.json")
+        alias_path = os.path.join(d, "tokens-hardlink.json")
+        with open(real_path, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "tokens": [
+                        {
+                            "action": "impl_write",
+                            "scope_target": "scope",
+                            "expires_epoch": now,
+                            "uses_remaining": 1,
+                        }
+                    ]
+                },
+                f,
+            )
+        os.link(real_path, alias_path)
+        check(
+            "hardlink alias fails closed",
+            tp.TokenStore(alias_path).consume("impl_write", "scope") is False,
+        )
+        with open(real_path, "r", encoding="utf-8") as f:
+            check("hardlink alias leaves canonical token untouched", json.load(f)["tokens"][0]["uses_remaining"] == 1)
+
+
+def test_token_store_one_shot_consume_is_concurrency_safe():
+    print("\n[tool_policy] 同一one-shot tokenは並行consumeでも1回だけ成功する")
+    if "fork" not in multiprocessing.get_all_start_methods():
+        print("  SKIP  fork-based race fixture is unavailable on this platform")
+        return
+
+    ctx = multiprocessing.get_context("fork")
+    with tempfile.TemporaryDirectory() as d:
+        store_path = os.path.join(d, "tokens.json")
+        with open(store_path, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "tokens": [
+                        {
+                            "action": "impl_write",
+                            "scope_target": "scope",
+                            "expires_epoch": int(time.time()) + 1000,
+                            "uses_remaining": 1,
+                        }
+                    ]
+                },
+                f,
+            )
+
+        workers = 4
+        start_barrier = ctx.Barrier(workers)
+        result_queue = ctx.Queue()
+        processes = [
+            ctx.Process(
+                target=_consume_token_with_load_delay,
+                args=(store_path, start_barrier, result_queue),
+            )
+            for _ in range(workers)
+        ]
+        for process in processes:
+            process.start()
+
+        results = []
+        for _ in processes:
+            kind, value = result_queue.get(timeout=10)
+            assert kind == "result", value
+            results.append(value)
+        for process in processes:
+            process.join(timeout=10)
+            assert process.exitcode == 0
+
+        check(
+            "exactly one concurrent consume succeeds",
+            sum(result is True for result in results) == 1,
+            f"results={results}",
+        )
+        with open(store_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        check(
+            "one-shot token is exhausted once",
+            data["tokens"][0]["uses_remaining"] == 0,
+        )
+
+
+def test_token_store_post_commit_durability_failure_does_not_report_false():
+    print("\n[tool_policy] rename後のfsync失敗でも消費済みtokenを未消費と誤報しない")
+    with tempfile.TemporaryDirectory() as d:
+        store_path = os.path.join(d, "tokens.json")
+        with open(store_path, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "tokens": [
+                        {
+                            "action": "impl_write",
+                            "scope_target": "scope",
+                            "expires_epoch": int(time.time()) + 1000,
+                            "uses_remaining": 2,
+                        }
+                    ]
+                },
+                f,
+            )
+
+        original_fsync = os.fsync
+
+        def fail_directory_fsync(fd):
+            if stat.S_ISDIR(os.fstat(fd).st_mode):
+                raise OSError("directory durability unavailable")
+            return original_fsync(fd)
+
+        original_store_fsync = tp.os.fsync
+        tp.os.fsync = fail_directory_fsync
+        try:
+            consumed = tp.TokenStore(store_path).consume("impl_write", "scope")
+        finally:
+            tp.os.fsync = original_store_fsync
+
+        check("logical consume remains successful after committed rename", consumed is True)
+        with open(store_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        check("committed token decrement is preserved", data["tokens"][0]["uses_remaining"] == 1)
 
 
 def test_decision_state_path_resolution():
@@ -283,6 +537,61 @@ def test_three_plane_public_truth():
     with open(os.path.join(pkg_root, "README.md"), encoding="utf-8") as f:
         readme = f.read()
     normalized = " ".join(readme.split())
+    first_screen = "\n".join(readme.splitlines()[:50])
+    check(
+        "README first-screen claim names the fail-closed guard scope",
+        "> **Local work governance for AI coding agents with fail-closed permission and worktree gates**" in readme,
+    )
+    check(
+        "README does not make an end-to-end fail-closed claim",
+        "> **Fail-closed local work governance for AI coding agents**" not in readme,
+    )
+    check(
+        "README first-screen names Japanese-first category",
+        "> **Japanese-first local work governance for AI coding agents**" in readme,
+    )
+    check(
+        "README describes the implemented work preview rather than local changes",
+        "Preview intended local work" in first_screen
+        and "Preview local changes" not in first_screen,
+    )
+    check(
+        "README does not pre-claim the v0.2 frozen Work Contract",
+        "ローカル作業契約へ変換" not in first_screen
+        and "何を触らないか" not in first_screen,
+    )
+    check(
+        "README names Claude Code as the first integrated and validated host",
+        "Claude Code is the first integrated and validated host adapter." in normalized,
+    )
+    check(
+        "README does not define the product as Claude Code-only",
+        "> **Japanese-first local work governance for Claude Code**" not in readme,
+    )
+    check(
+        "README distinguishes future host adapters from current support",
+        "Additional host adapters are not claimed until independently implemented and tested." in normalized,
+    )
+    check(
+        "README declares Technical Preview status",
+        "Technical Preview" in readme,
+    )
+    check(
+        "README states that UME-HARNESS is not an operating-system sandbox",
+        "UME-HARNESS is not an operating-system sandbox." in first_screen,
+    )
+    check(
+        "README does not overclaim non-engineer safety",
+        "非エンジニアが自然な日本語で安全に仕事を任せられる" not in readme,
+    )
+    check(
+        "README discloses beginner usability validation status",
+        "非エンジニア向けの導入しやすさは検証中です" in readme,
+    )
+    check(
+        "README preserves canonical-source and generated-mirror boundary",
+        "public `ume-harness`は明示closureから生成するrelease mirror" in readme,
+    )
     check(
         "UME Presence public repositoryをHuman-facing Local Presenceとして参照",
         "[UME Presence](https://github.com/UMEBOSHIISAN/ume-presence) — Human-facing Local Presence" in readme,
@@ -320,6 +629,11 @@ def main():
     test_classify_command_side_effect()
     test_token_store_consumes_single_earliest_token()
     test_token_store_expired_token_not_consumed()
+    test_token_store_post_commit_durability_failure_does_not_report_false()
+    test_token_store_rejects_unscoped_token_for_scoped_consume()
+    test_token_store_rejects_malformed_documents_without_authorizing()
+    test_token_store_rejects_symlink_and_hardlink_aliases()
+    test_token_store_one_shot_consume_is_concurrency_safe()
     test_decision_state_path_resolution()
     test_decision_state_record_and_read_roundtrip()
     test_stop_adapter_all_conditions_met()

@@ -30,6 +30,7 @@ from local_execution_gate import (
     GateDecision,
     LocalExecutionGate,
     ManagedExecutionDomain,
+    create_default_gate,
 )
 from local_execution_lease import (
     CanonicalTaskReference,
@@ -135,6 +136,41 @@ class LocalExecutionGateTests(unittest.TestCase):
         self.assertEqual(result.decision, GateDecision.ALLOW)
         self.assertEqual(result.lease_id, lease.lease_id)
         self.assertIn("permitted", result.reason)
+
+    def test_protected_control_plane_denies_enum_and_string_write_actions(self) -> None:
+        lease = self._create_lease()
+        self.store.issue(lease)
+        self.store.activate(lease.lease_id)
+
+        gate = LocalExecutionGate(
+            state_store=self.store,
+            domain_resolver=self._default_domain_resolver,
+            policy_evaluator=self._default_policy_evaluator,
+        )
+        target = os.path.join(self.worktree_dir, ".ume-harness", "activation.json")
+
+        for action in (GateAction.EDIT, GateAction.WRITE, "edit", "write"):
+            with self.subTest(action=action):
+                result = gate.evaluate_request(target, action)
+                self.assertEqual(result.decision, GateDecision.DENY)
+                self.assertEqual(result.violation_code, "PROTECTED_ZONE_VIOLATION")
+
+    def test_default_gate_without_policy_evaluator_fails_closed(self) -> None:
+        lease = self._create_lease()
+        self.store.issue(lease)
+        self.store.activate(lease.lease_id)
+
+        gate = create_default_gate(
+            state_path=self.state_file,
+            domain_resolver=self._default_domain_resolver,
+        )
+        result = gate.evaluate_request(
+            os.path.join(self.worktree_dir, "src", "file.py"),
+            GateAction.EDIT,
+        )
+
+        self.assertEqual(result.decision, GateDecision.DENY)
+        self.assertEqual(result.violation_code, "SITE_POLICY_DENIED")
 
     def test_test_only_lease_cannot_authorize_edit(self) -> None:
         task = CanonicalTaskReference(

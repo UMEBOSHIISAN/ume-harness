@@ -170,7 +170,7 @@ class LocalExecutionGate:
         # 5. Control-plane protection: <worktree>/.ume-harness/** is structurally non-writable
         control_plane_dir = os.path.realpath(os.path.join(worktree_realpath, ".ume-harness"))
         if real_path == control_plane_dir or _is_path_inside(real_path, control_plane_dir):
-            if action in (GateAction.EDIT, GateAction.WRITE):
+            if normalized_action in (GateAction.EDIT, GateAction.WRITE):
                 return GateEvaluationResult(
                     decision=GateDecision.DENY,
                     reason="target path is within protected control plane (.ume-harness)",
@@ -293,7 +293,10 @@ def create_default_gate(
     """Helper to instantiate LocalExecutionGate with optional overrides."""
     store = LeaseStateStore(state_path=state_path)
     resolver = domain_resolver or (lambda _: None)
-    evaluator = policy_evaluator or (lambda _policy, _path, _action: True)
+    # A missing site-policy evaluator must never silently authorize an active lease.
+    # Host adapters that have already evaluated their canonical policy may inject
+    # an explicit bridge; direct Core callers fail closed by default.
+    evaluator = policy_evaluator or (lambda _policy, _path, _action: False)
     return LocalExecutionGate(
         state_store=store,
         domain_resolver=resolver,
