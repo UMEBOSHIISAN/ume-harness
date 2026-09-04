@@ -10,11 +10,13 @@ japanese-human-layer の実LLM behavioral test（Phase 3）はここに含めな
 （fixture整合性テストと実LLM挙動テストを混同しない、という監査結果を反映）。
 """
 
+import hashlib
 import json
 import multiprocessing
 import os
 import re
 import stat
+import struct
 import subprocess
 import sys
 import tempfile
@@ -45,6 +47,81 @@ def _consume_token_with_load_delay(store_path, start_barrier, result_queue):
 
 PASS = 0
 FAIL = 0
+
+POSITIONING_ASSETS = (
+    "assets/readme/ja/ume-harness-human-layer.gif",
+    "assets/readme/ja/ume-harness-human-layer-poster.png",
+    "assets/readme/en/ume-harness-human-layer.gif",
+    "assets/readme/en/ume-harness-human-layer-poster.png",
+    "assets/readme/ja/ume-stack-responsibility.svg",
+    "assets/readme/en/ume-stack-responsibility.svg",
+    "assets/readme/ja/translation-konjac-cards.svg",
+    "assets/readme/en/translation-konjac-cards.svg",
+)
+
+
+def _gif_metadata(path):
+    """Return dimensions, frame count, duration ms, and frame delays for a GIF."""
+    with open(path, "rb") as stream:
+        data = stream.read()
+    assert data[:6] in (b"GIF87a", b"GIF89a"), path
+    dimensions = struct.unpack("<HH", data[6:10])
+    packed = data[10]
+    offset = 13
+    if packed & 0x80:
+        offset += 3 * (2 ** ((packed & 0x07) + 1))
+
+    delays = []
+    pending_delay = 0
+
+    def skip_sub_blocks(start):
+        while True:
+            size = data[start]
+            start += 1
+            if size == 0:
+                return start
+            start += size
+
+    while offset < len(data):
+        marker = data[offset]
+        offset += 1
+        if marker == 0x3B:
+            break
+        if marker == 0x21:
+            label = data[offset]
+            offset += 1
+            if label == 0xF9:
+                block_size = data[offset]
+                assert block_size == 4, path
+                pending_delay = struct.unpack("<H", data[offset + 2:offset + 4])[0] * 10
+                offset += 1 + block_size
+                assert data[offset] == 0, path
+                offset += 1
+            else:
+                offset = skip_sub_blocks(offset)
+            continue
+        assert marker == 0x2C, (path, marker)
+        local_packed = data[offset + 8]
+        offset += 9
+        if local_packed & 0x80:
+            offset += 3 * (2 ** ((local_packed & 0x07) + 1))
+        offset += 1
+        offset = skip_sub_blocks(offset)
+        delays.append(pending_delay)
+        pending_delay = 0
+
+    return dimensions, len(delays), sum(delays), frozenset(delays)
+
+
+def _asset_contract(path):
+    """Parse the flat JSON-compatible values used by the asset TOML contract."""
+    with open(path, encoding="utf-8") as stream:
+        text = stream.read()
+    entries = re.finditer(
+        r"(?ms)^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+?)(?=^[A-Za-z_][A-Za-z0-9_]*\s*=|\Z)",
+        text,
+    )
+    return {match.group(1): json.loads(match.group(2).strip()) for match in entries}
 
 
 def check(name: str, condition: bool, detail: str = ""):
@@ -539,65 +616,204 @@ def test_manifest_matches_explicit_release_closure():
         "MANIFEST.md のversionと実測test countがcurrent releaseに一致",
         f"# Release Manifest (ume-harness v{version})" in manifest_text
         and f"Measured against the v{version} release-candidate bytes" in manifest_text
-        and "  -> 316 passed" in manifest_text,
+        and "  -> 318 passed" in manifest_text,
     )
     check(
         "配布security/support文書のversionがcurrent releaseに一致",
         f"v{version} attests the explicit protected-runtime closure" in security_text
-        and f"# Support Matrix (v{version} generated public release mirror / 2026-09-02)" in support_matrix_text,
+        and f"# Support Matrix (v{version} generated public release mirror / 2026-09-04)" in support_matrix_text,
     )
+
+
+def test_positioning_assets_are_public_only_and_bounded():
+    pkg_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+    with open(os.path.join(pkg_root, "package_manifest.json"), encoding="utf-8") as f:
+        package_manifest = json.load(f)
+    release_payload = package_manifest["release"]["payload"]
+    install_payload = package_manifest["install_payload"]
+    assert package_manifest["version"] == "0.1.5"
+    with open(os.path.join(pkg_root, "VERSION"), encoding="utf-8") as f:
+        assert f.read().strip() == "0.1.5"
+
+    for relative in POSITIONING_ASSETS:
+        assert os.path.isfile(os.path.join(pkg_root, relative)), relative
+        assert relative in release_payload, relative
+        assert relative not in install_payload, relative
+    for relative in (
+        "README.en.md",
+        "assets/readme/source/asset-build.toml",
+        "assets/readme/source/fonts/NotoSansJP-Regular.ttf",
+        "assets/readme/source/fonts/OFL-1.1.txt",
+        "assets/readme/source/generate_ume_harness_assets.py",
+        "assets/readme/source/requirements-assets.txt",
+    ):
+        assert relative in release_payload, relative
+        assert relative not in install_payload, relative
+
+    contract_path = os.path.join(pkg_root, "assets/readme/source/asset-build.toml")
+    contract = _asset_contract(contract_path)
+    assert sorted(contract["outputs"]) == sorted(POSITIONING_ASSETS)
+    assert contract["normal_weight"] == 400
+    assert contract["bold_weight"] == 700
+    font_path = os.path.join(pkg_root, "assets/readme/source", contract["font"])
+    with open(font_path, "rb") as stream:
+        assert hashlib.sha256(stream.read()).hexdigest() == contract["font_sha256"]
+
+    for locale in ("ja", "en"):
+        gif = os.path.join(pkg_root, f"assets/readme/{locale}/ume-harness-human-layer.gif")
+        dimensions, frames, duration_ms, delays = _gif_metadata(gif)
+        assert dimensions == (contract["width"], contract["height"])
+        assert frames == contract["frame_count"]
+        assert duration_ms == contract["duration_ms"]
+        assert delays == frozenset((120, 130))
+        assert os.path.getsize(gif) < contract["max_gif_bytes"]
+
+        poster = os.path.join(pkg_root, f"assets/readme/{locale}/ume-harness-human-layer-poster.png")
+        with open(poster, "rb") as stream:
+            header = stream.read(24)
+        assert header[:8] == b"\x89PNG\r\n\x1a\n"
+        assert struct.unpack(">II", header[16:24]) == (
+            contract["poster_width"],
+            contract["poster_height"],
+        )
+
+        diagram_path = os.path.join(pkg_root, f"assets/readme/{locale}/ume-stack-responsibility.svg")
+        with open(diagram_path, encoding="utf-8") as stream:
+            diagram = stream.read()
+        assert 'viewBox="0 0 720 1120"' in diagram
+        assert diagram.count("stroke-dasharray=") == 2
+        assert diagram.count('data-role="bridge"') == 1
+        assert diagram.count('data-role="external"') == 2
+        if locale == "en":
+            assert ">Human: holds the purpose</tspan>" in diagram
+            assert ">and decides what to entrust</tspan>" in diagram
+            assert ">Separately configured</tspan>" in diagram
+            assert ">executor</tspan>" in diagram
+            assert ">Separate verification</tspan>" in diagram
+            assert ">path</tspan>" in diagram
+            assert ">Separately configured executor</text>" not in diagram
+
+            assert ">Solid = implemented now</tspan>" in diagram
+            assert ">Dashed = not connected</tspan>" in diagram
+            assert ">Outline = separately configured</tspan>" in diagram
+            assert "Solid = implemented now    Dashed = not connected" not in diagram
+
+        cards_path = os.path.join(pkg_root, f"assets/readme/{locale}/translation-konjac-cards.svg")
+        with open(cards_path, encoding="utf-8") as stream:
+            cards = stream.read()
+        assert 'viewBox="0 0 720 980"' in cards
+        assert "{service}" not in cards
+        assert "{branch}" not in cards
+        assert "{target}" not in cards
+        if locale == "ja":
+            with open(
+                os.path.join(pkg_root, "common-language/packs/ja-JP/p0_concepts.json"),
+                encoding="utf-8",
+            ) as stream:
+                concepts = json.load(stream)["concepts"]
+            assert "PCの外へ出る（表示例）" in cards
+            assert "削除（表示例）" in cards
+            assert concepts["git.status"]["headline"] in cards
+            assert (
+                concepts["git.push.normal"]["headline"].format(
+                    service="GitHub", branch="作業ブランチ"
+                )
+                in cards
+            )
+            assert concepts["fs.delete"]["headline"].format(target="選択した対象") in cards
+
+    generator_path = os.path.join(pkg_root, "assets/readme/source/generate_ume_harness_assets.py")
+    with open(generator_path, encoding="utf-8") as stream:
+        generator = stream.read()
+    assert "tomllib" in generator
+    assert "NORMAL_WEIGHT" in generator
+    assert "MIN_PYTHON" in generator
+    assert "FRAME_COUNT * 1000 != FPS * DURATION_MS" in generator
+    assert '"request": "この資料をまとめて、\\n必要ならREADMEも\\nいい感じに直しといて"' in generator
+    assert '"request": "Please organize the\\nmaterial and improve\\nthe README if useful."' in generator
+
+
+def test_manual_runner_invokes_positioning_asset_check():
+    source_path = os.path.abspath(__file__)
+    with open(source_path, encoding="utf-8") as stream:
+        source = stream.read()
+    main_body = source.rsplit("\ndef main():", 1)[1]
+    assert "test_positioning_assets_are_public_only_and_bounded()" in main_body
 
 
 def test_three_plane_public_truth():
-    print("\n[docs] public three-plane identityは独立利用と非自動接続を明記する")
+    print("\n[docs] Japanese-first positioning separates current surfaces and the unwired bridge")
     pkg_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
     with open(os.path.join(pkg_root, "README.md"), encoding="utf-8") as f:
         readme = f.read()
+    english_path = os.path.join(pkg_root, "README.en.md")
+    assert os.path.isfile(english_path), "README.en.md"
+    with open(english_path, encoding="utf-8") as f:
+        english = f.read()
     with open(os.path.join(pkg_root, "VERSION"), encoding="utf-8") as f:
         version = f.read().strip()
     normalized = " ".join(readme.split())
-    first_screen = "\n".join(readme.splitlines()[:50])
+    english_normalized = " ".join(english.split())
+    first_screen = "\n".join(readme.splitlines()[:55])
     check(
-        "README first-screen claim names the fail-closed guard scope",
-        "> **Local work governance for AI coding agents with fail-closed permission and worktree gates**" in readme,
+        "README begins with ordinary Japanese value language",
+        "日本語で、雑に頼める。" in first_screen
+        and "やること・確認すること・しないこと" in first_screen,
     )
     check(
-        "README does not make an end-to-end fail-closed claim",
-        "> **Fail-closed local work governance for AI coding agents**" not in readme,
+        "README names Japanese-first Harness before internal contract terms",
+        "Japanese-first Harness" in first_screen
+        and "Authority Overlay" not in first_screen
+        and "Clarification Impact Contract" not in first_screen,
     )
     check(
-        "README first-screen names Japanese-first category",
-        "> **Japanese-first local work governance for AI coding agents**" in readme,
+        "standalone CLI is explicitly preview-only",
+        "standalone CLIはファイル操作を実行しません。" in readme
+        and "The standalone CLI presents a plan; it does not perform file operations." in english,
     )
     check(
-        "README describes the implemented work preview rather than local changes",
-        "Preview intended local work" in first_screen
-        and "Preview local changes" not in first_screen,
+        "Quick Start discloses Claude transport and distinguishes requested side effects",
+        "## Preview Quick Start" in readme
+        and "Claude CLIの認証とネットワーク接続が必要" in readme
+        and "依頼文とcontextをClaudeへ送ります" in readme
+        and "依頼されたファイル操作や外部結果は実行しません" in readme
+        and "## Preview Quick Start" in english
+        and "authenticated Claude CLI and network access" in english
+        and "sends the request and context to Claude" in english
+        and "does not perform the requested file operations or consequential actions" in english,
     )
     check(
-        "README does not pre-claim the v0.2 frozen Work Contract",
-        "ローカル作業契約へ変換" not in first_screen
-        and "何を触らないか" not in first_screen,
+        "Human Layer CLI and Claude Code Host Adapter are separate current surfaces",
+        "### 日本語Human Layer preview CLI" in readme
+        and "### Claude Code Host Adapter" in readme
+        and "### Human Layer preview CLI" in english
+        and "### Claude Code Host Adapter" in english,
     )
     check(
-        "README names Claude Code as the first integrated and validated host",
-        "Claude Code is the first integrated and validated host adapter." in normalized,
+        "responsibility bridge is explicitly unwired in both languages",
+        "現在の公開release同士に自動runtime bridgeはありません。破線部分は未実装です。" in normalized
+        and "The current public releases have no automatic runtime bridge. The dashed connection is not implemented."
+        in english_normalized,
     )
     check(
-        "README does not define the product as Claude Code-only",
-        "> **Japanese-first local work governance for Claude Code**" not in readme,
+        "Mothership remains a complementary responsibility plane",
+        "UME-HARNESSは人間の意図を範囲の決まったローカル作業へ整理します。" in normalized
+        and "Mothershipは人間の判断を範囲の決まった外部結果へ結び付けます。" in normalized,
     )
     check(
-        "README distinguishes future host adapters from current support",
-        "Additional host adapters are not claimed until independently implemented and tested." in normalized,
+        "one GIF and one poster are referenced per locale",
+        readme.count("assets/readme/ja/ume-harness-human-layer.gif") == 1
+        and readme.count("assets/readme/ja/ume-harness-human-layer-poster.png") == 2
+        and english.count("assets/readme/en/ume-harness-human-layer.gif") == 1
+        and english.count("assets/readme/en/ume-harness-human-layer-poster.png") == 2
+        and 'media="(max-width: 600px)"' in readme
+        and 'media="(prefers-reduced-motion: reduce)"' in readme
+        and 'media="(max-width: 600px)"' in english
+        and 'media="(prefers-reduced-motion: reduce)"' in english,
     )
     check(
         "README declares Technical Preview status",
-        "Technical Preview" in readme,
-    )
-    check(
-        "README states that UME-HARNESS is not an operating-system sandbox",
-        "UME-HARNESS is not an operating-system sandbox." in first_screen,
+        "Technical Preview" in readme and "Technical Preview" in english,
     )
     check(
         "README does not overclaim non-engineer safety",
@@ -605,29 +821,39 @@ def test_three_plane_public_truth():
     )
     check(
         "README discloses beginner usability validation status",
-        "非エンジニア向けの導入しやすさは検証中です" in readme,
+        "非エンジニア向けの導入容易性は現在検証中です。" in readme
+        and "Ease of adoption for non-engineers remains under evaluation." in english,
     )
     check(
         "README preserves canonical-source and generated-mirror boundary",
-        "public `ume-harness`は明示closureから生成するrelease mirror" in readme,
+        ("public " + chr(96) + "ume-harness" + chr(96) + "は明示closureから生成するrelease mirror") in readme,
     )
     check(
-        "README exposes public CI status and workflow",
+        "README exposes public CI and current release",
         "https://github.com/UMEBOSHIISAN/ume-harness/actions/workflows/ci.yml/badge.svg" in readme
-        and "https://github.com/UMEBOSHIISAN/ume-harness/actions/workflows/ci.yml" in readme,
+        and f"https://github.com/UMEBOSHIISAN/ume-harness/releases/tag/v{version}" in readme,
     )
     check(
-        "README links the exact current public release",
-        f"https://github.com/UMEBOSHIISAN/ume-harness/releases/tag/v{version}" in readme,
+        "README and NOTICE distinguish project MIT code from the OFL font",
+        "project code is MIT" in english
+        and "Noto Sans JP" in english
+        and "SIL Open Font License 1.1" in english
+        and "プロジェクトのコードはMIT" in readme
+        and "SIL Open Font License 1.1" in readme,
+    )
+
+    with open(os.path.join(pkg_root, "NOTICE"), encoding="utf-8") as f:
+        notice = f.read()
+    check(
+        "NOTICE records the pinned Noto Sans JP provenance",
+        "Noto Sans JP" in notice
+        and "295d98a7a0c17c68f1341eaeea354e7960ea70d3" in notice
+        and "c2f3b4d463500a2ddcd3849cded1fceeb9fd6d1c32e6cbecd568453ba50fc68f" in notice
+        and "SIL Open Font License 1.1" in notice,
     )
     check(
-        "UME Presence public repositoryをHuman-facing Local Presenceとして参照",
-        "[UME Presence](https://github.com/UMEBOSHIISAN/ume-presence) — Human-facing Local Presence" in readme,
-    )
-    check(
-        "各製品の独立利用とruntime非自動接続を明記",
-        "Each product is independently usable. The shared architecture defines responsibility boundaries. "
-        "It does not imply automatic runtime integration." in normalized,
+        "github profile is not used as Harness identity above current implementation",
+        "github.merge_pr" not in readme[:readme.index("## 現在の実装")],
     )
 
 
@@ -667,6 +893,7 @@ def main():
     test_stop_adapter_all_conditions_met()
     test_stop_adapter_missing_condition_blocks()
     test_manifest_matches_explicit_release_closure()
+    test_positioning_assets_are_public_only_and_bounded()
     test_three_plane_public_truth()
     test_japanese_human_layer_fixture_consistency()
 

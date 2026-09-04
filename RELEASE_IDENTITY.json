@@ -15,11 +15,11 @@
     },
     "MANIFEST.md": {
       "mode": "100644",
-      "sha256": "308d9e4540c995e5fd17ea6ed41ebcfd40fade71dde653c0a476d494dae7bff9"
+      "sha256": "16c39eba1c86066ba2bf899fcf64ee8fb3250e1561e74d149b9d8438d2203db1"
     },
     "NOTICE": {
       "mode": "100644",
-      "sha256": "81d0aac7995cf1c7ca452e871c81fe5b06fc1d0c27f47254be11ef5db3becdbc"
+      "sha256": "b8ce0079807206b58a8f8ca954cf69af3e1e18b0621b6ebb3b213491f3a3d815"
     },
     "PHASE4_HOLD.md": {
       "mode": "100644",
@@ -29,21 +29,25 @@
       "mode": "100644",
       "sha256": "b1012679b4ebd64431353504955ae8a4fd4eb2971f20a4f4cd6e494f33efe7ee"
     },
+    "README.en.md": {
+      "mode": "100644",
+      "sha256": "4c023e8b015d06e289a25e011ef2f2a62b15f4fc7a3e1bf56feb157030d5d83e"
+    },
     "README.md": {
       "mode": "100644",
-      "sha256": "022059b73e959ef343c9dea1f1a533b6c0d1e9bec9735004cb226fc38d341bda"
+      "sha256": "c0bafc693db520af33e61a0af2b760a30f98055cd88a343a3494acb08f021507"
     },
     "SECURITY.md": {
       "mode": "100644",
-      "sha256": "b63f6ae5051741c0fba7bdeb929e95f93c5560e47226f7f433cc46c2dc4ba9d2"
+      "sha256": "5500574be8720e08ebac95351d525a0eca522ebf466be1d7adba5964bf16e2dc"
     },
     "SUPPORT_MATRIX.md": {
       "mode": "100644",
-      "sha256": "5203de5f57b2e3108cf25a1d29d7bc500dfe0f9018ef20132c85bd7a307808e5"
+      "sha256": "77229af8a389927e650666c2b03bc8b79378becff5925e9107e81f15df623429"
     },
     "VERSION": {
       "mode": "100644",
-      "sha256": "8a3dad16d348c163566a456fcf650d85d7aeeda5e53d01ee1fa8dc15212915a7"
+      "sha256": "800cf1c0392b24de7c0a1c6ea6778ecb433dec71c49a150bce96a98477527b2f"
     },
     "adapters/claude-code/README.md": {
       "mode": "100644",
@@ -72,6 +76,58 @@
     "assets/brand/ume-harness-lockup.svg": {
       "mode": "100644",
       "sha256": "b28a31bf54ff81a87c8a1252a66872d6e76ff2ff25451ae444c0b54be26ece95"
+    },
+    "assets/readme/en/translation-konjac-cards.svg": {
+      "mode": "100644",
+      "sha256": "5665436788790d0bc14467236e0d85d76474b50601458955bb5e394af79f9837"
+    },
+    "assets/readme/en/ume-harness-human-layer-poster.png": {
+      "mode": "100644",
+      "sha256": "eb095bec8b631d1b22985726957dbfe93d60182cb368e8a437e48ccfda803596"
+    },
+    "assets/readme/en/ume-harness-human-layer.gif": {
+      "mode": "100644",
+      "sha256": "e7a89c855e669e458706cf7a424fd6ed8252cbd060e1f6a204caf19b450740a8"
+    },
+    "assets/readme/en/ume-stack-responsibility.svg": {
+      "mode": "100644",
+      "sha256": "96f18fd68b6085248c065c6da7a98e954b22c7b2dfc81d8d253b275ac8ecabff"
+    },
+    "assets/readme/ja/translation-konjac-cards.svg": {
+      "mode": "100644",
+      "sha256": "6acc4bca2a6d76dc4826d41313cddaa6d99e535e52847bf14daf49a5fd8e7a94"
+    },
+    "assets/readme/ja/ume-harness-human-layer-poster.png": {
+      "mode": "100644",
+      "sha256": "fde87bffde7ff248580699fd06982a2e1db7473509b22130cc98b62c8fb031b3"
+    },
+    "assets/readme/ja/ume-harness-human-layer.gif": {
+      "mode": "100644",
+      "sha256": "33a62db79871f9c3b8a2c41625197751402c5b68a178cc725cca31077ed0aa36"
+    },
+    "assets/readme/ja/ume-stack-responsibility.svg": {
+      "mode": "100644",
+      "sha256": "6f45235d0890f06b45aac48170c3c6821e4ea96a9cce804bd579a6d0f522b745"
+    },
+    "assets/readme/source/asset-build.toml": {
+      "mode": "100644",
+      "sha256": "d5e2b7da38b0b0a09646d9b6ab8e98c92596a033f5ca2a6357943cca64bca2c2"
+    },
+    "assets/readme/source/fonts/NotoSansJP-Regular.ttf": {
+      "mode": "100644",
+      "sha256": "c2f3b4d463500a2ddcd3849cded1fceeb9fd6d1c32e6cbecd568453ba50fc68f"
+    },
+    "assets/readme/source/fonts/OFL-1.1.txt": {
+      "mode": "100644",
+      "sha256": "babcfe66c8a098b2fa279bc724a3a342f8124f77ce18941fbcc1bbb39823cded"
+    },
+    "assets/readme/source/generate_ume_harness_assets.py": {
+      "mode": "100644",
+      "sha256": "574e899e5146dee1e151ef9a6d301c8560ccec7fd6d46460bc4497d1ad4e8e6f"
+    },
+    "assets/readme/source/requirements-assets.txt": {
+      "mode": "100644",
+      "sha256": "570c9387510a35edf1e287600993944ebc8ee5af602c809cf00cd57e2b723779"
     },
     "bin/ume-harness": {
       "mode": "100755",
@@ -115,7 +171,7 @@
     },
     "package_manifest.json": {
       "mode": "100644",
-      "sha256": "00b6b83b36e05c9df69f8464351713adf203cd22737166bba28b6dea6dca2e7b"
+      "sha256": "825fa1c8fe04bc8becd0ca41bdcbb2db5d5b5a36623196910893c2faf63534ad"
     },
     "runtime/activation_updater.py": {
       "mode": "100644",
@@ -167,19 +223,19 @@
     },
     "scripts/health_check.py": {
       "mode": "100755",
-      "sha256": "2d7e6d2b9ed3a3bb8d25feaae19246e161a3b5c40751f621f04c748ab8aa2206"
+      "sha256": "5ca0256bf9423fa623826b57c944ed70b35861137c6c8640c4fa99db727427e9"
     },
     "scripts/install.sh": {
       "mode": "100755",
-      "sha256": "b39901af1b052e6f0ada87697421b2544f480455cedf34c77653240212da6027"
+      "sha256": "7da16229d2907f21dd9ff43bbc9053ca75ee2de3a29047b3989ffe7d91ee8ab6"
     },
     "scripts/release_promote.py": {
       "mode": "100755",
-      "sha256": "f587c9541d05b48e2482ff566e3db222c6def60d48f5da057734f23de417663d"
+      "sha256": "106644d4ac4742e45aaef46080bb0100e8563118e6b7e6b27def7bd794a1b6ad"
     },
     "scripts/uninstall.sh": {
       "mode": "100755",
-      "sha256": "1bfe0e9e7efcca021d9f9b9ebbca7aee26348d34acefb4497501a67a68d989ba"
+      "sha256": "72a75715c83c96c70d58abcb1980e04f2e5ea19f67974ad1d5220d775197cb29"
     },
     "tests/acceptance_record_claude.md": {
       "mode": "100644",
@@ -219,11 +275,11 @@
     },
     "tests/test_portable_core.py": {
       "mode": "100644",
-      "sha256": "b6dfbb22f6933721450d4c3578b61e4d75f87f518fa6f6ce9cd3685b074ac131"
+      "sha256": "477d5e9989f9ed5d2b17abcbbafd87a6f0899c478fc54ac01f0f1fdeea2b9463"
     },
     "tests/test_release_lifecycle.py": {
       "mode": "100644",
-      "sha256": "9b315ee8d55eea4e12e8fe12c33e657f300695e26847d2a74d9f1afef7a10e53"
+      "sha256": "e0267e5ff12ea6de07db4e525bd9586ca0aeab7007f72eaae1d770671b09b77e"
     },
     "tests/test_translation_konjac.py": {
       "mode": "100644",
@@ -267,7 +323,7 @@
     }
   },
   "schema": "ume-harness-release-identity.v1",
-  "source_commit": "6aec59570be155648a71568b20b214555c352308",
-  "source_payload_count": 66,
-  "source_payload_root_sha256": "0064c31c9461fd8c170d45fed291122da234a91f3f0a7f4be3b714485b755363"
+  "source_commit": "805b5eb8ca9b50e18146206e25db066141114975",
+  "source_payload_count": 80,
+  "source_payload_root_sha256": "df6d20bdef69c4c49548105e4ca53e3270f435082b5b42a83189628483d3ab6f"
 }
