@@ -22,7 +22,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "v0.1.4"
+VERSION = "v0.1.5"
 CANONICAL_REPOSITORY = "https://github.com/UMEBOSHIISAN/ume-harness-engineering.git"
 PUBLIC_MIRROR_REPOSITORY = "https://github.com/UMEBOSHIISAN/ume-harness.git"
 OWNED_EVENTS = ("PreToolUse", "PermissionRequest", "PostToolUseFailure")
@@ -690,7 +690,7 @@ def test_dangling_hook_check_rejects_shell_dispatch_forms(command_template, monk
         ROOT / "runtime/hook_setup_service.py",
         "hook_setup_shell_dispatch_forms",
     )
-    pkg_root = Path.home() / ".local/lib/ume-harness/v0.1.4"
+    pkg_root = Path.home() / ".local/lib/ume-harness/v0.1.5"
     hook = hss.get_adapter_hook_paths(str(pkg_root))["PreToolUse"]
     home_hook = "~" + hook[len(str(Path.home())):]
     spliced_hook = hook.replace("ume-harness", "ume-'harness'", 1)
@@ -712,12 +712,12 @@ def test_dangling_hook_check_rejects_shell_dispatch_forms(command_template, monk
     adapter_no_leading_slash = str(Path(hook).parent).lstrip("/")
     brace_adapter_prefix = str(Path(hook).parent).replace("claude-code", "claude-")
     padded_brace_adapter_dir = str(Path(hook).parent).replace(
-        "v0.1.4",
-        "v{0..00}.1.4",
+        "v0.1.5",
+        "v{0..00}.1.5",
     )
     plus_brace_adapter_dir = str(Path(hook).parent).replace(
-        "v0.1.4",
-        "v{+0..+0}.1.4",
+        "v0.1.5",
+        "v{+0..+0}.1.5",
     )
     hook_no_leading_slash = hook.lstrip("/")
     data = {
@@ -791,7 +791,7 @@ def test_dangling_hook_check_fails_closed_for_deeply_nested_shell_text():
         ROOT / "runtime/hook_setup_service.py",
         "hook_setup_nested_depth_limit",
     )
-    pkg_root = Path.home() / ".local/lib/ume-harness/v0.1.4"
+    pkg_root = Path.home() / ".local/lib/ume-harness/v0.1.5"
     adapter_dir = Path(hss.get_adapter_hook_paths(str(pkg_root))["PreToolUse"]).parent
     command = f'PATH="/tmp/a b:{adapter_dir}:$PATH" pretooluse_hook.py'
     for _ in range(5):

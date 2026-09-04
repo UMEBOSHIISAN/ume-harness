@@ -2,7 +2,7 @@
 # uninstall.sh — Safe Portable Harness Prefix Uninstaller
 #
 # Removes ume-harness installation from:
-#   ${PREFIX}/lib/ume-harness/v0.1.4/
+#   ${PREFIX}/lib/ume-harness/v0.1.5/
 #   ${PREFIX}/bin/ume-harness
 #
 # Boundary & Safety Guarantees:
@@ -13,7 +13,7 @@
 set -euo pipefail
 
 SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VERSION="v0.1.4"
+VERSION="v0.1.5"
 PREFIX="${HOME}/.local"
 SETTINGS_PATH="${HOME}/.claude/settings.json"
 YES=false
@@ -22,7 +22,7 @@ usage() {
     echo "Usage: $0 [OPTIONS]"
     echo "Options:"
     echo "  --prefix <DIR>    Installation prefix (default: ~/.local)"
-    echo "  --version <VER>   Target version to remove (default: v0.1.4)"
+    echo "  --version <VER>   Target version to remove (default: v0.1.5)"
     echo "  --settings-path <FILE> Claude settings path (default: ~/.claude/settings.json)"
     echo "  -y, --yes         Non-interactive confirmation"
     echo "  -h, --help        Show this help message"

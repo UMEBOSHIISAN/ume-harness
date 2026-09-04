@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 980" role="img" aria-labelledby="title desc">
+  <title id="title">Translation Konjac — explain technical actions plainly</title>
+  <desc id="desc">Presentation only. These cards do not grant External Action Authority.</desc>
+  <style>
+    .title { font: 700 28px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #202b38; }
+    .label { font: 700 26px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #202b38; }
+    .body { font: 23px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #334155; }
+    .small { font: 20px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #64748b; }
+  </style>
+  <rect width="720" height="980" fill="#f8fafc"/>
+  <text class="title" x="360" y="58" text-anchor="middle">Translation Konjac — explain technical actions plainly</text>
+  <g><title>Checking whether files have changed</title>
+  <rect x="45" y="110" width="630" height="215" rx="24" fill="#e6eef9" stroke="#315f9f" stroke-width="4"/>
+  <text class="label" x="360" y="162" text-anchor="middle">Read only</text>
+  <text class="body" x="360" y="215" text-anchor="middle">Checking whether files</text>
+<text class="body" x="360" y="249" text-anchor="middle">have changed</text>
+</g><g><title>About to send history to a remote branch</title>
+  <rect x="45" y="355" width="630" height="215" rx="24" fill="#fff0d7" stroke="#b56817" stroke-width="4"/>
+  <text class="label" x="360" y="407" text-anchor="middle">Leaves this PC</text>
+  <text class="body" x="360" y="460" text-anchor="middle">About to send history</text>
+<text class="body" x="360" y="494" text-anchor="middle">to a remote branch</text>
+</g><g><title>About to delete the selected target</title>
+  <rect x="45" y="600" width="630" height="215" rx="24" fill="#fde8e8" stroke="#b93838" stroke-width="4"/>
+  <text class="label" x="360" y="652" text-anchor="middle">Deletion</text>
+  <text class="body" x="360" y="705" text-anchor="middle">About to delete</text>
+<text class="body" x="360" y="739" text-anchor="middle">the selected target</text>
+</g>
+  <text class="small" x="360" y="910" text-anchor="middle">Presentation only. These cards do not grant External Action Authority.</text>
+</svg>

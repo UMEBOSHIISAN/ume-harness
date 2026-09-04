@@ -21,11 +21,18 @@ crontab/pm2固有設定等）を除去した上で、汎用の意思決定ロジ
   co（Codex・GPT系）による2ラウンドの独立レビューを経て確定。
 - `ux/japanese-human-layer/`: 日本人非エンジニア向けUXレイヤーとして新規設計。
 
-## 第三者コードの混入なし
+## 第三者配布物
 
-本パッケージはPython標準ライブラリのみに依存する（`dataclasses`, `enum`, `json`,
-`os`, `tempfile`, `time`, `typing`）。サードパーティライブラリ・ソースコードの
-コピーは含まれない。
+実行時コードはPython標準ライブラリのみに依存する（`dataclasses`, `enum`, `json`,
+`os`, `tempfile`, `time`, `typing`）。README assetの決定的生成入力として、
+Noto Sans JP Font Softwareを同梱する。
+
+- source: `google/fonts@295d98a7a0c17c68f1341eaeea354e7960ea70d3`
+- file SHA-256: `c2f3b4d463500a2ddcd3849cded1fceeb9fd6d1c32e6cbecd568453ba50fc68f`
+- license: SIL Open Font License 1.1
+- license text: `assets/readme/source/fonts/OFL-1.1.txt`
+
+このfontはREADME asset生成用であり、40-file install payloadには含まれない。
 
 ## 監修・検証プロセス
 

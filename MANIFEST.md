@@ -1,4 +1,4 @@
-# Release Manifest (ume-harness v0.1.4)
+# Release Manifest (ume-harness v0.1.5)
 
 `ume-harness-engineering` is the sole canonical source. The public
 `ume-harness` repository is a generated release mirror and is not a supported
@@ -13,7 +13,7 @@ It has no publish, push, merge, import, or public-to-engineering operation.
 Ambient files, ignored files, untracked scratch, caches, and repository history
 do not become release bytes merely because they exist in the checkout.
 
-Release payload count: 67 files (66 canonical source files plus one generated
+Release payload count: 81 files (80 canonical source files plus one generated
 `RELEASE_IDENTITY.json`).
 
 ```
@@ -25,7 +25,21 @@ NOTICE
 PHASE4_HOLD.md
 QUARANTINE_NOTICE.md
 README.md
+README.en.md
 assets/brand/ume-harness-lockup.svg
+assets/readme/en/translation-konjac-cards.svg
+assets/readme/en/ume-harness-human-layer.gif
+assets/readme/en/ume-harness-human-layer-poster.png
+assets/readme/en/ume-stack-responsibility.svg
+assets/readme/ja/translation-konjac-cards.svg
+assets/readme/ja/ume-harness-human-layer.gif
+assets/readme/ja/ume-harness-human-layer-poster.png
+assets/readme/ja/ume-stack-responsibility.svg
+assets/readme/source/asset-build.toml
+assets/readme/source/fonts/NotoSansJP-Regular.ttf
+assets/readme/source/fonts/OFL-1.1.txt
+assets/readme/source/generate_ume_harness_assets.py
+assets/readme/source/requirements-assets.txt
 RELEASE_IDENTITY.json
 SECURITY.md
 SUPPORT_MATRIX.md
@@ -99,15 +113,15 @@ Claude hooks, and the common-language pack and schema.
 
 ## Verification
 
-Measured against the v0.1.4 release-candidate bytes on 2026-09-02:
+Measured against the v0.1.5 release-candidate bytes on 2026-09-04:
 
 ```
 python3 -m pytest -q -p no:cacheprovider tests ux/japanese-human-layer/tests
-  -> 316 passed
+  -> 318 passed
 
 python3 scripts/health_check.py --installed-dir . --identity-only --json
   -> all_passed: true
-  -> root: 19ef4ea326a5c5a388ba7a900b82e90e63ed0f3a40e41ebe54271ec1834f252c
+  -> root: 07aa3b52a452b3dad53c9ecf4125adc86aff360534566cb4fadbb601a8648c38
 
 python3 scripts/health_check.py --installed-dir . --json
   -> all_passed: true
