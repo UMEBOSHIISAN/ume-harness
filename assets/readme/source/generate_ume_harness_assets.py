@@ -73,46 +73,46 @@ SOFT = "#f1f5f9"
 COPY = {
     "ja": {
         "title": "日本語Human Layer — 作業前のプレビュー",
-        "subtitle": "曖昧な依頼を「やること・確認すること・しないこと」へ整理する",
+        "subtitle": "曖昧な依頼を、確認できる範囲と確認が必要な操作へ整理する",
         "human": "人間の依頼",
         "request": "この資料をまとめて、\n必要ならREADMEも\nいい感じに直しといて",
         "harness": "UME-HARNESS",
-        "do_title": "やること",
-        "do_lines": ("資料を読む", "要点をまとめる", "READMEの修正案を作る"),
-        "confirm_title": "確認すること",
-        "confirm_lines": ("ファイルの移動・統合も含めますか？",),
-        "not_title": "しないこと",
-        "not_lines": ("削除", "外部送信", "commit / push"),
+        "do_title": "確認なしで進めてよい内容",
+        "do_lines": ("候補の操作を表示", "内容を整理", "質問をまとめる"),
+        "confirm_title": "実行前に確認が必要な操作",
+        "confirm_lines": ("あなたの確認が必要です",),
+        "not_title": "まだ実行していないこと",
+        "not_lines": ("ファイル操作など",),
         "done": "プレビュー完了",
         "unchanged": "まだ何も変更していません",
         "scene_titles": (
             "普通の曖昧な依頼から始める",
-            "やることを見える形にする",
+            "確認できる範囲を表示する",
             "決められない点をまとめて確認する",
-            "しないことを先に示す",
+            "まだ実行していないことを示す",
             "作業前のプレビューで止まる",
         ),
-        "footer": "standalone CLIはpreview / reportまで。ファイル操作を実行しません。",
+        "footer": "単体CLIはプレビューと報告まで。ファイル操作を実行しません。",
     },
     "en": {
         "title": "Human Layer — preview before work",
-        "subtitle": "Turn an imperfect request into will do / confirm / will not do",
+        "subtitle": "Turn an imperfect request into visible scope and actions requiring confirmation",
         "human": "Human request",
         "request": "Please organize the\nmaterial and improve\nthe README if useful.",
         "harness": "UME-HARNESS",
-        "do_title": "Will do",
-        "do_lines": ("Read the material", "Summarize key points", "Draft README changes"),
-        "confirm_title": "Needs confirmation",
-        "confirm_lines": ("Should files also be moved or combined?",),
-        "not_title": "Will not do",
-        "not_lines": ("Delete files", "Send externally", "commit / push"),
+        "do_title": "May proceed without confirmation",
+        "do_lines": ("Show candidate actions", "Organize the request", "Group questions"),
+        "confirm_title": "Needs your confirmation before work",
+        "confirm_lines": ("Your confirmation is required",),
+        "not_title": "Has not run yet",
+        "not_lines": ("File operations",),
         "done": "Preview complete",
         "unchanged": "Nothing has been changed",
         "scene_titles": (
             "Start with an ordinary, imperfect request",
-            "Make the intended work visible",
+            "Show the visible scope",
             "Group unresolved choices for confirmation",
-            "Show what will not happen",
+            "Show what has not run yet",
             "Stop at the pre-work preview",
         ),
         "footer": "The standalone CLI stops at preview / report and performs no file operations.",
@@ -210,11 +210,11 @@ def draw_preview(locale: str, scene: int | None, progress: float = 1.0) -> Image
     panel(draw, not_box, fill=RED_LIGHT if scene in (3, None) else SOFT, outline=RED, active=scene == 3)
 
     draw.text((460, 180), copy["do_title"], font=load_font(20, bold=True), fill=GREEN)
-    lines_in_box(draw, (690, 176, 1110, 245), copy["do_lines"], 18, marker="✓", gap=2)
+    lines_in_box(draw, (850, 176, 1110, 245), copy["do_lines"], 18, marker="✓", gap=2)
     draw.text((460, 285), copy["confirm_title"], font=load_font(20, bold=True), fill=ORANGE)
-    lines_in_box(draw, (690, 283, 1110, 340), copy["confirm_lines"], 18, marker="?")
+    lines_in_box(draw, (850, 283, 1110, 340), copy["confirm_lines"], 18, marker="?")
     draw.text((460, 385), copy["not_title"], font=load_font(20, bold=True), fill=RED)
-    lines_in_box(draw, (690, 378, 1110, 445), copy["not_lines"], 18, marker="×", gap=2)
+    lines_in_box(draw, (850, 378, 1110, 445), copy["not_lines"], 18, marker="×", gap=2)
 
     done_fill = GREEN_LIGHT if scene in (4, None) else SOFT
     draw.rounded_rectangle((405, 515, 1165, 565), radius=15, fill=done_fill, outline=GREEN, width=5 if scene == 4 else 2)
@@ -262,8 +262,8 @@ def draw_poster(locale: str) -> Image.Image:
     )
     for box, title, values, fill, outline, marker in boxes:
         panel(draw, box, fill=fill, outline=outline, active=False)
-        x0, y0, _, y1 = box
-        draw.text((x0 + 24, y0 + 18), title, font=load_font(22, bold=True), fill=outline)
+        x0, y0, x1, y1 = box
+        centered(draw, center_x, y0 + 27, title, 22, color=outline, bold=True)
         visible_values = values
         visible_marker = marker
         if title == copy["confirm_title"]:
@@ -275,7 +275,7 @@ def draw_poster(locale: str) -> Image.Image:
             )
             visible_values = (f"? {wrapped_values[0]}",) + tuple(f"  {line}" for line in wrapped_values[1:])
             visible_marker = None
-        lines_in_box(draw, (x0 + 250, y0 + 10, 650, y1 - 8), visible_values, 20, marker=visible_marker, gap=3)
+        lines_in_box(draw, (x0 + 70, y0 + 48, x1 - 35, y1 - 8), visible_values, 18, marker=visible_marker, gap=2)
 
     done = (45, 795, 675, 885)
     draw.rounded_rectangle(done, radius=16, fill=GREEN_LIGHT, outline=GREEN, width=3)
@@ -290,18 +290,20 @@ RESPONSIBILITY_COPY = {
     "ja": {
         "title": "人間とAIが仕事を分け合うための責務分担",
         "human": ("人間：目的を持ち、何を任せるかを決める",),
-        "harness": ("UME-HARNESS", "曖昧な日本語を整理", "やる / 確認 / しない", "PC内の作業範囲"),
-        "bridge": "DIRECTION / NOT_SHIPPED",
+        "harness": ("UME-HARNESS", "曖昧な日本語を整理", "確認範囲 / 承認要求", "ローカル作業のプレビュー"),
+        "state_current": "現在の実装",
+        "bridge": "方向性・未実装",
         "mothership": ("Mothership", "具体的な外部操作を固定", "人間の判断と照合", "同じ台帳履歴内で一度だけ"),
         "executor": ("別途構成する実行系",),
         "verifier": ("別経路の確認系",),
-        "caption": ("現在の公開release同士に自動runtime bridgeはありません。", "破線部分は未実装です。"),
+        "caption": ("現在の公開版同士に自動接続はありません。", "破線部分は未実装です。"),
         "legend": ("実線 = 現在実装済み", "破線 = 現在未接続", "外枠 = 別途構成"),
     },
     "en": {
         "title": "Responsibility split for humans and AI sharing work",
         "human": ("Human: holds the purpose", "and decides what to entrust"),
-        "harness": ("UME-HARNESS", "Organize ambiguous Japanese intent", "Will do / confirm / will not do", "Bound local work"),
+        "harness": ("UME-HARNESS", "Organize ambiguous Japanese intent", "Visible scope / confirmation", "Local-work preview"),
+        "state_current": "CURRENT",
         "bridge": "DIRECTION / NOT_SHIPPED",
         "mothership": ("Mothership", "Freeze one concrete external action", "Check the human decision", "Consume once in one ledger history"),
         "executor": ("Separately configured", "executor"),
@@ -356,7 +358,7 @@ def responsibility_svg(locale: str) -> str:
   <path d="M360 200 V240" stroke="#315f9f" stroke-width="5"/><path d="M350 226 L360 243 L370 226" fill="#315f9f"/>
 
   <rect x="45" y="245" width="630" height="235" rx="26" fill="#e6eef9" stroke="#315f9f" stroke-width="5"/>
-  <text class="state" x="75" y="282">CURRENT</text>
+  <text class="state" x="75" y="282">{escape(copy["state_current"])}</text>
   <text class="label" x="360" y="318" text-anchor="middle">{escape(copy["harness"][0])}</text>
   {svg_lines(copy["harness"][1:], 365)}
 
@@ -367,7 +369,7 @@ def responsibility_svg(locale: str) -> str:
   </g>
 
   <rect x="45" y="620" width="630" height="235" rx="26" fill="#dcf1e9" stroke="#16705a" stroke-width="5"/>
-  <text class="state" x="75" y="657">CURRENT</text>
+  <text class="state" x="75" y="657">{escape(copy["state_current"])}</text>
   <text class="label" x="360" y="693" text-anchor="middle">{escape(copy["mothership"][0])}</text>
   {svg_lines(copy["mothership"][1:], 740)}
 
@@ -404,7 +406,7 @@ KONJAC_COPY = {
                 ("⚠️ 「選択した対象」を", "削除しようとしています"),
             ),
         ),
-        "caption": "説明用の表示です。External Action Authorityを発行しません。",
+        "caption": "説明用の表示です。外部操作の権限は発行しません。",
     },
     "en": {
         "title": "Translation Konjac — explain technical actions plainly",

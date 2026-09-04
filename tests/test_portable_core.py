@@ -684,7 +684,12 @@ def test_positioning_assets_are_public_only_and_bounded():
         assert diagram.count("stroke-dasharray=") == 2
         assert diagram.count('data-role="bridge"') == 1
         assert diagram.count('data-role="external"') == 2
-        if locale == "en":
+        if locale == "ja":
+            assert diagram.count(">現在の実装</text>") == 2
+            assert ">方向性・未実装</text>" in diagram
+            assert ">CURRENT</text>" not in diagram
+            assert "DIRECTION / NOT_SHIPPED" not in diagram
+        else:
             assert ">Human: holds the purpose</tspan>" in diagram
             assert ">and decides what to entrust</tspan>" in diagram
             assert ">Separately configured</tspan>" in diagram
@@ -721,6 +726,7 @@ def test_positioning_assets_are_public_only_and_bounded():
                 in cards
             )
             assert concepts["fs.delete"]["headline"].format(target="選択した対象") in cards
+            assert "External Action Authority" not in cards
 
     generator_path = os.path.join(pkg_root, "assets/readme/source/generate_ume_harness_assets.py")
     with open(generator_path, encoding="utf-8") as stream:
@@ -742,7 +748,7 @@ def test_manual_runner_invokes_positioning_asset_check():
 
 
 def test_three_plane_public_truth():
-    print("\n[docs] Japanese-first positioning separates current surfaces and the unwired bridge")
+    print("\n[docs] Japanese-language positioning separates current surfaces and the unwired bridge")
     pkg_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
     with open(os.path.join(pkg_root, "README.md"), encoding="utf-8") as f:
         readme = f.read()
@@ -758,13 +764,23 @@ def test_three_plane_public_truth():
     check(
         "README begins with ordinary Japanese value language",
         "日本語で、雑に頼める。" in first_screen
-        and "やること・確認すること・しないこと" in first_screen,
+        and "作業へ進む前に" in first_screen
+        and "やること・確認すること・しないこと" not in first_screen,
     )
     check(
-        "README names Japanese-first Harness before internal contract terms",
-        "Japanese-first Harness" in first_screen
+        "README describes its Japanese-language focus before internal contract terms",
+        "日本語を中心に設計したハーネスです。" in first_screen
+        and "Japanese-first" not in first_screen
         and "Authority Overlay" not in first_screen
         and "Clarification Impact Contract" not in first_screen,
+    )
+    check(
+        "README makes no unsupported first-in-Japan claim",
+        "日本初" not in readme
+        and "日本一" not in readme
+        and "Japanese-first" not in readme
+        and "Japan's first" not in english
+        and "first in Japan" not in english,
     )
     check(
         "standalone CLI is explicitly preview-only",
@@ -791,14 +807,14 @@ def test_three_plane_public_truth():
     )
     check(
         "responsibility bridge is explicitly unwired in both languages",
-        "現在の公開release同士に自動runtime bridgeはありません。破線部分は未実装です。" in normalized
+        "現在の公開版同士に自動接続はありません。破線部分は未実装です。" in normalized
         and "The current public releases have no automatic runtime bridge. The dashed connection is not implemented."
         in english_normalized,
     )
     check(
         "Mothership remains a complementary responsibility plane",
-        "UME-HARNESSは人間の意図を範囲の決まったローカル作業へ整理します。" in normalized
-        and "Mothershipは人間の判断を範囲の決まった外部結果へ結び付けます。" in normalized,
+        "UME-HARNESSは人間の意図を範囲の見えるローカル作業案へ整理します。" in normalized
+        and "Mothershipを自動で呼び出しません。" in normalized,
     )
     check(
         "one GIF and one poster are referenced per locale",
@@ -823,6 +839,14 @@ def test_three_plane_public_truth():
         "README discloses beginner usability validation status",
         "非エンジニア向けの導入容易性は現在検証中です。" in readme
         and "Ease of adoption for non-engineers remains under evaluation." in english,
+    )
+    check(
+        "README matches the current preview/report vocabulary",
+        "確認できる範囲" in readme
+        and "確認が必要な操作" in readme
+        and "まだ実行されていません" in readme
+        and "やること・確認すること・しないこと" not in readme
+        and "will do / needs confirmation / will not do" not in english,
     )
     check(
         "README preserves canonical-source and generated-mirror boundary",

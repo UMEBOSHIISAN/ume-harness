@@ -2,6 +2,8 @@
 
 [English](README.en.md) · Technical Preview · [v0.1.5](https://github.com/UMEBOSHIISAN/ume-harness/releases/tag/v0.1.5)
 
+このmain上のREADMEには、歴史的なv0.1.5 Release後の未公開の公開面・導入改善が含まれます。公開済みv0.1.5の配布bytesは書き換えません。
+
 [![CI](https://github.com/UMEBOSHIISAN/ume-harness/actions/workflows/ci.yml/badge.svg)](https://github.com/UMEBOSHIISAN/ume-harness/actions/workflows/ci.yml)
 
 <p align="center">
@@ -11,11 +13,11 @@
 > 日本語で、雑に頼める。
 >
 > 作業へ進む前に、
-> 「やること・確認すること・しないこと」を見える形にする。
+> 「確認できる範囲」と「確認が必要な操作」を見える形にする。
 
 UME-HARNESSは、日本語の曖昧な依頼を
-範囲の決まったローカル作業へ整理する
-Japanese-first Harnessです。
+範囲の見えるローカル作業案へ整理する
+日本語を中心に設計したハーネスです。
 
 現在は、日本語Human Layerのpreview CLIと、
 Claude Codeのlocal workを説明・制限するHost Adapterを提供します。
@@ -28,7 +30,7 @@ standalone CLIはファイル操作を実行しません。
     <source media="(prefers-reduced-motion: reduce)" srcset="assets/readme/ja/ume-harness-human-layer-poster.png">
     <source media="(max-width: 600px)" srcset="assets/readme/ja/ume-harness-human-layer-poster.png">
     <img src="assets/readme/ja/ume-harness-human-layer.gif"
-         alt="曖昧な日本語の依頼を、やること、確認すること、しないことへ整理し、まだ何も変更していないと示すHuman Layerの図解。"
+         alt="曖昧な日本語の依頼を、確認できる範囲と確認が必要な操作へ整理し、まだファイル操作を実行していないと示すHuman Layerの図解。"
          width="100%">
   </picture>
 </p>
@@ -43,7 +45,7 @@ UME-HARNESSは、普通の日本語で受けた依頼を、AI coding agentが作
 確認できる範囲へ整理します。
 
 人間が全部を細かく操作するのでも、AIへ全部を明け渡すのでもなく、
-今回やること、確認が必要なこと、やらないことを先に見える形にするためのローカル作業面です。
+今回確認できる範囲、確認が必要な操作、まだ実行していないことを先に見える形にするためのローカル作業面です。
 
 ## 現在の実装
 
@@ -51,8 +53,9 @@ UME-HARNESSは、普通の日本語で受けた依頼を、AI coding agentが作
 
 ### 日本語Human Layer preview CLI
 
-日本語の依頼を「やること / 確認すること / しないこと」に整理して表示します。
-standalone CLIはpreview/reportまでで、ファイル操作を実行しません。
+日本語の依頼を、確認なしで進めてよい内容と、実行前にあなたの確認が必要な操作として表示します。
+質問が残る場合は、作業を始める前にまとめて表示します。
+standalone CLIは「まだ実行されていません」と表示し、preview/reportまでで停止します。
 
 CLIはClaude Sonnet 5を呼ぶ構成ですが、現行releaseからraw semantic runへ到達できないため、
 モデル精度を保証しません。保存済みfixtureを使うオフライン経路もあります。
@@ -67,8 +70,8 @@ Claude Codeは最初の統合・検証済みHost Adapterです。exact candidate
 
 ## Mothershipとの責務分担
 
-UME-HARNESSは人間の意図を範囲の決まったローカル作業へ整理します。
-Mothershipは人間の判断を範囲の決まった外部結果へ結び付けます。
+UME-HARNESSは人間の意図を範囲の見えるローカル作業案へ整理します。
+Mothershipは人間の判断をひとつの外部操作に対する限定Authorityへ結び付けます。
 
 <p align="center">
   <img src="assets/readme/ja/ume-stack-responsibility.svg"
@@ -76,7 +79,7 @@ Mothershipは人間の判断を範囲の決まった外部結果へ結び付け�
        width="760">
 </p>
 
-現在の公開release同士に自動runtime bridgeはありません。破線部分は未実装です。
+現在の公開版同士に自動接続はありません。破線部分は未実装です。
 UME-HARNESSは外部のConsequential Authorityを持たず、Mothershipを自動で呼び出しません。
 
 ## Preview Quick Start
@@ -86,7 +89,7 @@ git clone https://github.com/UMEBOSHIISAN/ume-harness.git
 cd ume-harness
 ./scripts/install.sh
 
-ume-harness "このフォルダの資料まとめて、必要ならREADMEもいい感じに直しといて" \
+~/.local/bin/ume-harness "このフォルダの資料まとめて、必要ならREADMEもいい感じに直しといて" \
   --context "現在の作業フォルダには資料3件とREADME.mdがあります。"
 ```
 
@@ -97,7 +100,7 @@ ume-harness "このフォルダの資料まとめて、必要ならREADMEもい�
 LLMを呼ばないオフライン確認:
 
 ```bash
-ume-harness --llm-output-file <path-to-json>
+~/.local/bin/ume-harness --llm-output-file <path-to-json>
 ```
 
 historicalな入出力例は[examples/basic_usage.md](examples/basic_usage.md)にあります。
@@ -197,7 +200,7 @@ trusted canonical/generated-release checkoutを前提とし、独立した署名
 
 ## 技術資料
 
-- [Human Layer](ux/japanese-human-layer/README.md)
+- [Human Layer（公開済みv0.1.5の設計資料）](ux/japanese-human-layer/README.md)
 - [Claude Code adapter](adapters/claude-code/README.md)
 - [Authority contract](contracts/authority_contract.md)
 - [Tool policy](contracts/tool_policy.md)

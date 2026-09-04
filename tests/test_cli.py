@@ -88,6 +88,22 @@ def test_approval_required_state_when_only_approvals_pending():
     check("exit code 2", cli._EXIT_CODES[headline] == 2)
 
 
+def test_report_uses_only_the_current_preview_surface():
+    print("\n[copy/runtime] レポートは確認範囲・承認要求・未実行だけを表示する")
+    llm_output = {
+        "work_type": "EDIT_CREATE", "inferred_intent": "x", "inferred_deliverable": "x",
+        "candidate_actions": ["資料を確認する", "先方にメールで送信する"],
+        "clarification_assessments": [],
+    }
+    result = hla.normalize(llm_output, tier=tp.Tier.TIER_NORMAL)
+    report, headline = cli.render_report(result)
+    check("確認なしで進めてよい内容を表示する", "確認なしで進めてよい内容" in report)
+    check("実行前の確認要求を表示する", "実行前にあなたの確認が必要" in report)
+    check("未実行を表示する", "まだ実行されていません" in report)
+    check("旧い三分類の看板語を出さない", "しないこと" not in report and "will not do" not in report)
+    check("headline remains preview-only", headline == "APPROVAL_REQUIRED")
+
+
 def test_held_state_when_clarification_structurally_blocked():
     print("\n[headline] clarification_assessments欠落 → HELD（fail-safe）")
     llm_output = {
@@ -149,6 +165,7 @@ def main():
     test_preview_complete_state_when_nothing_needs_approval()
     test_ask_state_takes_priority_over_approval_required()
     test_approval_required_state_when_only_approvals_pending()
+    test_report_uses_only_the_current_preview_surface()
     test_held_state_when_clarification_structurally_blocked()
     test_report_never_leaks_forbidden_vocabulary()
     test_tier_is_never_exposed_as_user_facing_argument()

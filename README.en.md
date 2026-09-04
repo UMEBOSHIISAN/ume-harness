@@ -2,6 +2,8 @@
 
 [日本語](README.md) · Technical Preview · [v0.1.5](https://github.com/UMEBOSHIISAN/ume-harness/releases/tag/v0.1.5)
 
+This main-branch README includes unreleased public-surface and onboarding follow-up to the historical v0.1.5 release. The published v0.1.5 distribution bytes are not rewritten.
+
 [![CI](https://github.com/UMEBOSHIISAN/ume-harness/actions/workflows/ci.yml/badge.svg)](https://github.com/UMEBOSHIISAN/ume-harness/actions/workflows/ci.yml)
 
 <p align="center">
@@ -10,10 +12,11 @@
 
 > Start with an ordinary, imperfect request.
 >
-> Before work proceeds, make “will do / needs confirmation /
-> will not do” visible.
+> Before work proceeds, make visible what may proceed without confirmation,
+> what needs confirmation, and what has not run yet.
 
-UME-HARNESS is a Japanese-first local work harness for AI coding agents.
+UME-HARNESS is a local work harness designed around Japanese-language requests
+for AI coding agents.
 
 It currently provides a standalone Human Layer preview CLI and a
 Claude Code Host Adapter for explaining and bounding local work.
@@ -26,7 +29,7 @@ Ease of adoption for non-engineers remains under evaluation.
     <source media="(prefers-reduced-motion: reduce)" srcset="assets/readme/en/ume-harness-human-layer-poster.png">
     <source media="(max-width: 600px)" srcset="assets/readme/en/ume-harness-human-layer-poster.png">
     <img src="assets/readme/en/ume-harness-human-layer.gif"
-         alt="Human Layer turns an ordinary ambiguous request into will do, needs confirmation, and will not do, ending before any change is made."
+         alt="Human Layer turns an ordinary ambiguous request into visible scope and actions requiring confirmation, ending before file operations run."
          width="100%">
   </picture>
 </p>
@@ -40,9 +43,9 @@ People should not need to write machine-perfect instructions before asking for
 help. UME-HARNESS organizes an ordinary request into a scope that can be
 reviewed before an AI coding agent begins local work.
 
-It is a local-work plane for making visible what will be done, what still
-needs confirmation, and what will not be done—without requiring a person to
-micromanage everything or hand over all control.
+It is a local-work plane for making visible what may proceed without
+confirmation, what needs confirmation, and what has not run yet—without
+requiring a person to micromanage everything or hand over all control.
 
 ## Current implementation
 
@@ -50,7 +53,8 @@ The current release has two distinct surfaces.
 
 ### Human Layer preview CLI
 
-It organizes a request into “will do / needs confirmation / will not do.”
+It shows candidate actions that may proceed without confirmation, actions that
+require your confirmation, and any questions that must be answered first.
 The standalone CLI stops at preview/report and does not perform file operations.
 
 The CLI is configured to call Claude Sonnet 5. The current release cannot
@@ -68,8 +72,8 @@ this release.
 
 ## Responsibility split with Mothership
 
-UME-HARNESS turns human intent into bounded local work.
-Mothership turns a human decision into bounded external consequence.
+UME-HARNESS turns human intent into a bounded local-work preview.
+Mothership binds a human decision to bounded authority for one external action.
 
 <p align="center">
   <img src="assets/readme/en/ume-stack-responsibility.svg"
@@ -87,7 +91,7 @@ git clone https://github.com/UMEBOSHIISAN/ume-harness.git
 cd ume-harness
 ./scripts/install.sh
 
-ume-harness "Please summarize the material in this folder and improve the README if needed" \
+~/.local/bin/ume-harness "Please summarize the material in this folder and improve the README if needed" \
   --context "The current folder contains three documents and README.md."
 ```
 
@@ -98,7 +102,7 @@ does not perform the requested file operations or consequential actions.
 Offline check without an LLM call:
 
 ```bash
-ume-harness --llm-output-file <path-to-json>
+~/.local/bin/ume-harness --llm-output-file <path-to-json>
 ```
 
 A historical input/output example is in [examples/basic_usage.md](examples/basic_usage.md).
@@ -205,7 +209,7 @@ signature verifier.
 
 ## Technical documentation
 
-- [Human Layer](ux/japanese-human-layer/README.md)
+- [Human Layer (published v0.1.5 design material)](ux/japanese-human-layer/README.md)
 - [Claude Code adapter](adapters/claude-code/README.md)
 - [Authority contract](contracts/authority_contract.md)
 - [Tool policy](contracts/tool_policy.md)

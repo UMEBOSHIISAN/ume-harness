@@ -31,11 +31,11 @@
     },
     "README.en.md": {
       "mode": "100644",
-      "sha256": "4c023e8b015d06e289a25e011ef2f2a62b15f4fc7a3e1bf56feb157030d5d83e"
+      "sha256": "7d2694aa68e488f03b67450436fc4a6eed448f3a88c2cc66d59fe4d7cf4e894f"
     },
     "README.md": {
       "mode": "100644",
-      "sha256": "c0bafc693db520af33e61a0af2b760a30f98055cd88a343a3494acb08f021507"
+      "sha256": "0ab08a1d94e28683f2f88ed6c114f25d82f219ad13817f66070262ae3dee727d"
     },
     "SECURITY.md": {
       "mode": "100644",
@@ -83,31 +83,31 @@
     },
     "assets/readme/en/ume-harness-human-layer-poster.png": {
       "mode": "100644",
-      "sha256": "eb095bec8b631d1b22985726957dbfe93d60182cb368e8a437e48ccfda803596"
+      "sha256": "7b7c06ccc827ae3927cb5652e00a7b8f478c5311e72c04b206592717ec5402f2"
     },
     "assets/readme/en/ume-harness-human-layer.gif": {
       "mode": "100644",
-      "sha256": "e7a89c855e669e458706cf7a424fd6ed8252cbd060e1f6a204caf19b450740a8"
+      "sha256": "7a81ad6c89c1471cde064da31d11eb6c18b7621d6cc36c6a1fca2c8318166399"
     },
     "assets/readme/en/ume-stack-responsibility.svg": {
       "mode": "100644",
-      "sha256": "96f18fd68b6085248c065c6da7a98e954b22c7b2dfc81d8d253b275ac8ecabff"
+      "sha256": "85fbe1cdd5ba46a5a2e812e17cbc25b96c656cc5aaf71424dc02025edfef0d00"
     },
     "assets/readme/ja/translation-konjac-cards.svg": {
       "mode": "100644",
-      "sha256": "6acc4bca2a6d76dc4826d41313cddaa6d99e535e52847bf14daf49a5fd8e7a94"
+      "sha256": "a31923c22f6e03ebfa56f91ab0eeefb61827bf6949105a08c5d0ef3e7eeff624"
     },
     "assets/readme/ja/ume-harness-human-layer-poster.png": {
       "mode": "100644",
-      "sha256": "fde87bffde7ff248580699fd06982a2e1db7473509b22130cc98b62c8fb031b3"
+      "sha256": "9c678b52b551b5008a34e1119d5191272ca691bf3b832c7fddfa2ba47fa6b7f1"
     },
     "assets/readme/ja/ume-harness-human-layer.gif": {
       "mode": "100644",
-      "sha256": "33a62db79871f9c3b8a2c41625197751402c5b68a178cc725cca31077ed0aa36"
+      "sha256": "8a920907bf61c527685971f719b08decddafbd22f922f8b86f208b2060a376f9"
     },
     "assets/readme/ja/ume-stack-responsibility.svg": {
       "mode": "100644",
-      "sha256": "6f45235d0890f06b45aac48170c3c6821e4ea96a9cce804bd579a6d0f522b745"
+      "sha256": "8686807190b6db65d23d0248233ff71b82332f8244c4ac1518c68727dd37295f"
     },
     "assets/readme/source/asset-build.toml": {
       "mode": "100644",
@@ -123,7 +123,7 @@
     },
     "assets/readme/source/generate_ume_harness_assets.py": {
       "mode": "100644",
-      "sha256": "574e899e5146dee1e151ef9a6d301c8560ccec7fd6d46460bc4497d1ad4e8e6f"
+      "sha256": "c893b7c0bbfc57a2c482c354ec4121877f8fa03270925682bf10bc2032a24702"
     },
     "assets/readme/source/requirements-assets.txt": {
       "mode": "100644",
@@ -255,7 +255,7 @@
     },
     "tests/test_cli.py": {
       "mode": "100644",
-      "sha256": "dafe94ec5fbcdcab5469f03697e8f27de631c07485295d53798ad186b1af4237"
+      "sha256": "71de48c70ff47454ace1314e632e4964f2a66284b62ab6b0f0f9098242e71bd4"
     },
     "tests/test_human_layer_adapter.py": {
       "mode": "100644",
@@ -275,7 +275,7 @@
     },
     "tests/test_portable_core.py": {
       "mode": "100644",
-      "sha256": "477d5e9989f9ed5d2b17abcbbafd87a6f0899c478fc54ac01f0f1fdeea2b9463"
+      "sha256": "0a17d2a09b825d6f1a5b3666943c3af0902a35cbfa2e2b455eab21976456137b"
     },
     "tests/test_release_lifecycle.py": {
       "mode": "100644",
@@ -323,7 +323,7 @@
     }
   },
   "schema": "ume-harness-release-identity.v1",
-  "source_commit": "805b5eb8ca9b50e18146206e25db066141114975",
+  "source_commit": "621683dc8978daf19ab32d08aba2d33b4483cf0c",
   "source_payload_count": 80,
-  "source_payload_root_sha256": "df6d20bdef69c4c49548105e4ca53e3270f435082b5b42a83189628483d3ab6f"
+  "source_payload_root_sha256": "8d8988550cdc68ab4b5a324b2f3baa2c386457bfd5213a3a8dad18a25902590e"
 }
