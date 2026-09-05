@@ -15,7 +15,7 @@
     },
     "MANIFEST.md": {
       "mode": "100644",
-      "sha256": "16c39eba1c86066ba2bf899fcf64ee8fb3250e1561e74d149b9d8438d2203db1"
+      "sha256": "ab9727b90da17e8864b34d0ef174390f18b429099290b289cb7c6ca871841a4f"
     },
     "NOTICE": {
       "mode": "100644",
@@ -31,31 +31,31 @@
     },
     "README.en.md": {
       "mode": "100644",
-      "sha256": "7d2694aa68e488f03b67450436fc4a6eed448f3a88c2cc66d59fe4d7cf4e894f"
+      "sha256": "bd332888e83ea49b9f15b99b3cc0cefbc8f3194b80dcb0bf20c6aaeaf0ac5564"
     },
     "README.md": {
       "mode": "100644",
-      "sha256": "0ab08a1d94e28683f2f88ed6c114f25d82f219ad13817f66070262ae3dee727d"
+      "sha256": "5fb091ab1293df708c2fd787476fef9902c141a7a0b4e62e7bb5e25064bdee77"
     },
     "SECURITY.md": {
       "mode": "100644",
-      "sha256": "5500574be8720e08ebac95351d525a0eca522ebf466be1d7adba5964bf16e2dc"
+      "sha256": "ba5902bb9089b070e8686d9015435c211e26a77cb8ebff6465d6117e2a982480"
     },
     "SUPPORT_MATRIX.md": {
       "mode": "100644",
-      "sha256": "77229af8a389927e650666c2b03bc8b79378becff5925e9107e81f15df623429"
+      "sha256": "49e7c4e49b958cc59a657a63c86963b714e8fed408666d3cbbeb4f1e70683f9c"
     },
     "VERSION": {
       "mode": "100644",
-      "sha256": "800cf1c0392b24de7c0a1c6ea6778ecb433dec71c49a150bce96a98477527b2f"
+      "sha256": "1f2110568627307becae713f8b808f3d9d912d4b2a24ed6a78605f03f7437d3c"
     },
     "adapters/claude-code/README.md": {
       "mode": "100644",
-      "sha256": "6d53c652d3481a1155635c1037bf408ccdb3edf45640c8015daa51208b9cdacd"
+      "sha256": "e64e7ffaf3b0d9d3245b9285f80fe9847820ca8d9de62ca94bfdea627d36bddc"
     },
     "adapters/claude-code/lease_gate_runner.py": {
       "mode": "100755",
-      "sha256": "1b6562aa474ae0ce0c63de6e2bf61efded7f77a29e2b4626f5768c689f6135c1"
+      "sha256": "20d33f032337e70a763d1595fae17d2c972ea9fee12abc3d109408a8d1263993"
     },
     "adapters/claude-code/permission_request_hook.py": {
       "mode": "100755",
@@ -171,7 +171,7 @@
     },
     "package_manifest.json": {
       "mode": "100644",
-      "sha256": "825fa1c8fe04bc8becd0ca41bdcbb2db5d5b5a36623196910893c2faf63534ad"
+      "sha256": "5d6abe6f3f22eb73648a0a930db0e3a6f49907292153fe4a32736c43ec1b430e"
     },
     "runtime/activation_updater.py": {
       "mode": "100644",
@@ -223,19 +223,19 @@
     },
     "scripts/health_check.py": {
       "mode": "100755",
-      "sha256": "5ca0256bf9423fa623826b57c944ed70b35861137c6c8640c4fa99db727427e9"
+      "sha256": "dd02aaf217bbf99285343275735b423b47cd92c1a5c62b3eac291b12c79d88b6"
     },
     "scripts/install.sh": {
       "mode": "100755",
-      "sha256": "7da16229d2907f21dd9ff43bbc9053ca75ee2de3a29047b3989ffe7d91ee8ab6"
+      "sha256": "d9d99f042e98339890a5482af4941c6127e09ab04d06308a55155917e4a644ab"
     },
     "scripts/release_promote.py": {
       "mode": "100755",
-      "sha256": "106644d4ac4742e45aaef46080bb0100e8563118e6b7e6b27def7bd794a1b6ad"
+      "sha256": "a40e5039d2d31a9f2b13869522ac0b878bf3e4ddec89e68c3ccd1515e9e321b0"
     },
     "scripts/uninstall.sh": {
       "mode": "100755",
-      "sha256": "72a75715c83c96c70d58abcb1980e04f2e5ea19f67974ad1d5220d775197cb29"
+      "sha256": "ee23b47e632a4972fc2b441ad907d927b8e1d8fdb8aa1215251293b6daa118d4"
     },
     "tests/acceptance_record_claude.md": {
       "mode": "100644",
@@ -251,7 +251,7 @@
     },
     "tests/test_claude_code_adapter.py": {
       "mode": "100644",
-      "sha256": "254e3cd4faf68945310580b632dabca3619f7b93bf89869c5e57366b2c83a411"
+      "sha256": "c79f858c9910ba651a3a8c0a6e2365f8722b1cd002c726e8d4b8035eacc693dc"
     },
     "tests/test_cli.py": {
       "mode": "100644",
@@ -275,11 +275,11 @@
     },
     "tests/test_portable_core.py": {
       "mode": "100644",
-      "sha256": "0a17d2a09b825d6f1a5b3666943c3af0902a35cbfa2e2b455eab21976456137b"
+      "sha256": "3bd1eb0aa418d270e9b18cb87a54e06b6cf3bd14ec0402327eae3176af35e194"
     },
     "tests/test_release_lifecycle.py": {
       "mode": "100644",
-      "sha256": "e0267e5ff12ea6de07db4e525bd9586ca0aeab7007f72eaae1d770671b09b77e"
+      "sha256": "ce80e9ec6f65ec4959609ed187f1ce38bdef6704816c4878f76f59ce09349d25"
     },
     "tests/test_translation_konjac.py": {
       "mode": "100644",
@@ -323,7 +323,7 @@
     }
   },
   "schema": "ume-harness-release-identity.v1",
-  "source_commit": "621683dc8978daf19ab32d08aba2d33b4483cf0c",
+  "source_commit": "8363237c7a67d91c989830d209ff13177a440c03",
   "source_payload_count": 80,
-  "source_payload_root_sha256": "8d8988550cdc68ab4b5a324b2f3baa2c386457bfd5213a3a8dad18a25902590e"
+  "source_payload_root_sha256": "7543e09b8cd33bafdedcb5a5982cbb3d648aae6ae58b7b5c4aa7a2e56e510082"
 }

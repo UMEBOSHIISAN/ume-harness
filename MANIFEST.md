@@ -1,4 +1,4 @@
-# Release Manifest (ume-harness v0.1.5)
+# Release Manifest (ume-harness v0.1.6)
 
 `ume-harness-engineering` is the sole canonical source. The public
 `ume-harness` repository is a generated release mirror and is not a supported
@@ -113,15 +113,15 @@ Claude hooks, and the common-language pack and schema.
 
 ## Verification
 
-Measured against the v0.1.5 release-candidate bytes on 2026-09-04:
+Measured against the v0.1.6 release-candidate bytes on 2026-09-05:
 
 ```
 python3 -m pytest -q -p no:cacheprovider tests ux/japanese-human-layer/tests
-  -> 318 passed
+  -> 324 passed
 
 python3 scripts/health_check.py --installed-dir . --identity-only --json
   -> all_passed: true
-  -> root: 07aa3b52a452b3dad53c9ecf4125adc86aff360534566cb4fadbb601a8648c38
+  -> root: eebd7af03bc50ee0028804c31ea09b3280ed137cda0133df33ec3731fe6ca721
 
 python3 scripts/health_check.py --installed-dir . --json
   -> all_passed: true

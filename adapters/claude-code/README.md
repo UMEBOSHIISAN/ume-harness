@@ -18,9 +18,21 @@ Claude Code と ume-harness Safety Core & Auto Translation Konjac を接続す�
      過度な安心感を与えない事実ベースの案内を返します。
 
 3本のstructured outputとPreToolUse deny（exit 2）はstatic adapter test済みです。
-ただしexact candidate bytesでのphysical Claude UI 3-hook E2Eは別のrelease Gateであり、
-単体テストだけをlive表示証拠へ昇格させません。Translation KonjacはPresentation-onlyで、
+v0.1.6では、isolated install済みexact candidate bytesによるinteractive Claude UI 3-hook
+E2Eも実機確認済みです。単体テストだけをlive表示証拠へ昇格させません。Translation KonjacはPresentation-onlyで、
 失敗してもcanonical Safety Gateの評価をskipしません。
+
+`AskUserQuestion`と`ExitPlanMode`は、generic hook envelopeとactivation/protected-closureを
+検証した後、Claude自身のhost interactionへ返します。Claude固有のpayload schemaは
+このadapterで複製せず、回答、`updatedInput`、permission decision、approval、authorityも
+生成しません。`EnterPlanMode`は同じexact-name境界に置くdefensive compatibilityであり、
+live ClaudeでのPreToolUse event発火は未確認です。interactive Claudeだけをphysical E2Eの
+対象とし、non-interactive `claude -p`のhost interaction supportはclaimしません。
+
+`ToolSearch`はClaudeのhost-ownedな遅延tool schema loaderとして、同じattestation後の
+exact-name境界でのみblockせず返します。これはロードされたtoolの許可や実行を意味せず、
+後続のtool invocationは別のPreToolUseで再判定されます。`Agent`や任意のMCP toolを
+pass-throughするものではありません。
 
 `LeaseStateStore`のexpected-state / concurrent / out-of-band mutation primitiveはClaude hostの
 operation begin/completeには未結線です。Autonomous Stopもpredicateのみで、Stop hookはありません。
