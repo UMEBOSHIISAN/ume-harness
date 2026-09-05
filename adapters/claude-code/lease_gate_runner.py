@@ -144,6 +144,8 @@ _SAFE_PATH_FREE_GIT_SUBCOMMANDS = frozenset({"branch", "log"})
 _GIT_STATUS_PATH_OPTIONS = frozenset(
     {"-C", "--git-dir", "--work-tree", "--pathspec-from-file", "--pathspec-file-nul"}
 )
+_HOST_INTERACTION_TOOLS = frozenset({"AskUserQuestion", "EnterPlanMode", "ExitPlanMode"})
+_HOST_CAPABILITY_DISCOVERY_TOOLS = frozenset({"ToolSearch"})
 
 _SECRET_COMPONENTS = frozenset(
     {
@@ -1198,6 +1200,18 @@ def evaluate_invocation(
         _load_runtime_modules(attested_snapshot, install_dir)
     except Exception as exc:
         return 2, f"[ume-harness Lease Gate] protected runtime unavailable: {exc} (RUNTIME_IMPORT_ERROR)\n"
+
+    # Claude owns these exact host-control tools.  Closure attestation and
+    # activation checks above still run; only the generic local side-effect
+    # policy is skipped, without synthesizing a host decision or user answer.
+    if tool_name in _HOST_INTERACTION_TOOLS:
+        return 0, None
+
+    # ToolSearch is Claude's host-owned deferred-tool schema loader.  Loading a
+    # capability does not authorize the later invocation of that tool; the
+    # resulting tool call returns through this same wildcard PreToolUse hook.
+    if tool_name in _HOST_CAPABILITY_DISCOVERY_TOOLS:
+        return 0, None
 
     if gate is None:
         try:

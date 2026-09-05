@@ -1,8 +1,8 @@
 # UME-HARNESS
 
-[English](README.en.md) · Technical Preview · [v0.1.5](https://github.com/UMEBOSHIISAN/ume-harness/releases/tag/v0.1.5)
+[English](README.en.md) · Technical Preview · [v0.1.6](https://github.com/UMEBOSHIISAN/ume-harness/releases/tag/v0.1.6)
 
-このmain上のREADMEには、歴史的なv0.1.5 Release後の未公開の公開面・導入改善が含まれます。公開済みv0.1.5の配布bytesは書き換えません。
+このmain上のREADMEには、歴史的なv0.1.6 Release後の未公開の公開面・導入改善が含まれます。公開済みv0.1.6の配布bytesは書き換えません。
 
 [![CI](https://github.com/UMEBOSHIISAN/ume-harness/actions/workflows/ci.yml/badge.svg)](https://github.com/UMEBOSHIISAN/ume-harness/actions/workflows/ci.yml)
 
@@ -65,8 +65,9 @@ CLIはClaude Sonnet 5を呼ぶ構成ですが、現行releaseからraw semantic 
 Claude Codeのlocal lease、worktree、path、capability境界を扱います。
 PreToolUse、PermissionRequest、PostToolUseFailureの3 hookとLease Gateをstatic・結合テストしています。
 
-Claude Codeは最初の統合・検証済みHost Adapterです。exact candidate bytesによるphysical live E2Eは
-別の検証gateであり、このreleaseの主張には含めません。
+Claude Codeは最初の統合・検証済みHost Adapterです。v0.1.6では、isolated install済みexact
+candidate bytesによるinteractive physical live E2Eを確認済みです。非対話`claude -p`、MCP実行、
+未知toolのpass-throughはこのreleaseの主張に含めません。
 
 ## Mothershipとの責務分担
 
@@ -135,11 +136,11 @@ cd ume-harness
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-v0.1.4からv0.1.5へ更新する場合は、新しいsource checkoutから旧releaseを検証して取り外し、
+v0.1.5からv0.1.6へ更新する場合は、新しいsource checkoutから旧releaseを検証して取り外し、
 その後に新releaseをインストールします。`--force`はcross-version更新には使いません。
 
 ```bash
-./scripts/uninstall.sh --version v0.1.4 --settings-path "${HOME}/.claude/settings.json" --yes
+./scripts/uninstall.sh --version v0.1.5 --settings-path "${HOME}/.claude/settings.json" --yes
 ./scripts/install.sh
 ```
 
@@ -163,7 +164,7 @@ setup/disconnectが所有するのは、setup自身が生成した3本のcanonic
 ### 診断・アンインストール
 
 ```bash
-python3 ~/.local/lib/ume-harness/v0.1.5/scripts/health_check.py
+python3 ~/.local/lib/ume-harness/v0.1.6/scripts/health_check.py
 # またはrepository内から
 python3 ./scripts/health_check.py
 
@@ -200,7 +201,7 @@ trusted canonical/generated-release checkoutを前提とし、独立した署名
 
 ## 技術資料
 
-- [Human Layer（公開済みv0.1.5の設計資料）](ux/japanese-human-layer/README.md)
+- [Human Layer（公開済みv0.1.6の設計資料）](ux/japanese-human-layer/README.md)
 - [Claude Code adapter](adapters/claude-code/README.md)
 - [Authority contract](contracts/authority_contract.md)
 - [Tool policy](contracts/tool_policy.md)

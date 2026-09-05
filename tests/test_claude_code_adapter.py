@@ -612,6 +612,285 @@ def test_unrecognized_tool_fails_closed() -> None:
     check("exit 2", p.returncode == 2, f"got {p.returncode}")
 
 
+def test_exact_host_interaction_tools_reach_claude_without_harness_authority() -> None:
+    print("\n[Host Interaction] Exact Claude-native interaction tools pass through without authority output")
+    cases = (
+        (
+            "AskUserQuestion",
+            {
+                "questions": [
+                    {
+                        "question": "Continue?",
+                        "header": "Confirm",
+                        "options": [
+                            {"label": "Yes", "description": "Continue the test"},
+                            {"label": "No", "description": "Stop the test"},
+                        ],
+                        "multiSelect": False,
+                    }
+                ]
+            },
+        ),
+        ("EnterPlanMode", {}),
+        ("ExitPlanMode", {"plan": "test-only plan"}),
+    )
+
+    with tempfile.TemporaryDirectory() as td:
+        for tool_name, tool_input in cases:
+            check(
+                f"{tool_name} is not disguised as READ_ONLY",
+                hook.runner.classify_side_effect(tool_name, tool_input).value == "UNKNOWN",
+            )
+            proc = run_hook_subproc(
+                {
+                    "hook_event_name": "PreToolUse",
+                    "tool_name": tool_name,
+                    "tool_input": tool_input,
+                    "cwd": td,
+                },
+                env={"UME_HARNESS_STATE_DIR": td},
+            )
+            check(f"{tool_name} is not blocked by Harness", proc.returncode == 0, f"stderr={proc.stderr!r}")
+            output = json.loads(proc.stdout)
+            check(f"{tool_name} emits presentation only", set(output) == {"systemMessage"}, f"output={output!r}")
+            serialized = json.dumps(output, ensure_ascii=False)
+            check(f"{tool_name} emits no synthetic updatedInput", "updatedInput" not in serialized)
+            check(f"{tool_name} emits no approval decision", "hookSpecificOutput" not in output)
+        check("host interaction creates no Harness state", os.listdir(td) == [], f"state={os.listdir(td)!r}")
+
+
+def test_exact_toolsearch_capability_discovery_reaches_claude_without_authority() -> None:
+    print("\n[Host Capability Discovery] Exact ToolSearch passes through; near matches stay fail-closed")
+    with tempfile.TemporaryDirectory() as td:
+        opaque_payload = {
+            "query": "plan tools",
+            "futureHostField": {"shape": "owned-by-claude"},
+        }
+        code, err = hook.evaluate_invocation(
+            {
+                "hook_event_name": "PreToolUse",
+                "tool_name": "ToolSearch",
+                "tool_input": opaque_payload,
+                "cwd": td,
+            },
+            state_dir=td,
+        )
+        check("exact ToolSearch reaches Claude", code == 0, f"got {code}, err={err!r}")
+        check("exact ToolSearch creates no Harness decision", err is None, f"err={err!r}")
+        check(
+            "ToolSearch is not disguised as READ_ONLY",
+            hook.runner.classify_side_effect("ToolSearch", opaque_payload).value == "UNKNOWN",
+        )
+
+        attested_root, root_error = hook.runner.compute_closure_root_digest(ROOT_DIR)
+        check("candidate closure digest is available", attested_root is not None, f"err={root_error!r}")
+        activation_path = os.path.join(td, "activation.json")
+        with open(activation_path, "w", encoding="utf-8") as activation:
+            json.dump(
+                {
+                    "schema": "local-execution-lease-activation.v0",
+                    "mode": "active",
+                    "generation": 1,
+                    "runtime_root_digest": attested_root,
+                    "policy_sha256": "0" * 64,
+                    "updated_at": "2026-01-01T00:00:00+00:00",
+                },
+                activation,
+            )
+        attested_code, attested_err = hook.evaluate_invocation(
+            {
+                "hook_event_name": "PreToolUse",
+                "tool_name": "ToolSearch",
+                "tool_input": opaque_payload,
+                "cwd": td,
+            },
+            install_dir=ROOT_DIR,
+            state_dir=td,
+        )
+        check(
+            "exact ToolSearch passes after activation attestation",
+            attested_code == 0,
+            f"got {attested_code}, err={attested_err!r}",
+        )
+
+        proc = run_hook_subproc(
+            {
+                "hook_event_name": "PreToolUse",
+                "tool_name": "ToolSearch",
+                "tool_input": opaque_payload,
+                "cwd": td,
+            },
+            env={"UME_HARNESS_STATE_DIR": os.path.join(td, "unactivated")},
+        )
+        check("ToolSearch subprocess exits 0", proc.returncode == 0, f"stderr={proc.stderr!r}")
+        output = json.loads(proc.stdout)
+        check("ToolSearch emits presentation only", set(output) == {"systemMessage"}, f"output={output!r}")
+        serialized = json.dumps(output, ensure_ascii=False)
+        for forbidden in ("permissionDecision", "updatedInput", "approval", "authority"):
+            check(f"ToolSearch emits no synthetic {forbidden}", forbidden not in serialized)
+
+        malformed_code, malformed_err = hook.evaluate_invocation(
+            {
+                "hook_event_name": "PreToolUse",
+                "tool_name": "ToolSearch",
+                "tool_input": None,
+                "cwd": td,
+            },
+            state_dir=td,
+        )
+        check("malformed ToolSearch envelope remains blocked", malformed_code == 2)
+        check(
+            "malformed ToolSearch envelope reports invalid input",
+            malformed_err is not None and "INVALID_HOOK_INPUT" in malformed_err,
+            f"err={malformed_err!r}",
+        )
+
+        for near_name in ("toolsearch", "ToolSearchFoo", "ToolSearch "):
+            code, err = hook.evaluate_invocation(
+                {
+                    "hook_event_name": "PreToolUse",
+                    "tool_name": near_name,
+                    "tool_input": {},
+                    "cwd": td,
+                },
+                state_dir=td,
+            )
+            check(f"near-match {near_name!r} remains blocked", code == 2, f"got {code}, err={err!r}")
+
+        for discovered_tool in ("Agent", "mcp__example__unknown"):
+            code, err = hook.evaluate_invocation(
+                {
+                    "hook_event_name": "PreToolUse",
+                    "tool_name": discovered_tool,
+                    "tool_input": {},
+                    "cwd": td,
+                },
+                install_dir=ROOT_DIR,
+                state_dir=td,
+            )
+            check(
+                f"ToolSearch does not authorize discovered {discovered_tool}",
+                code == 2,
+                f"got {code}, err={err!r}",
+            )
+
+
+def test_non_interaction_unknown_tools_remain_fail_closed() -> None:
+    print("\n[Host Interaction] Agent and arbitrary MCP tools remain governed")
+    with tempfile.TemporaryDirectory() as td:
+        for tool_name in ("Agent", "mcp__example__unknown"):
+            code, err = hook.evaluate_invocation(
+                {"tool_name": tool_name, "tool_input": {}},
+                gate=leg.create_default_gate(
+                    state_path=os.path.join(td, "leases.json"),
+                    domain_resolver=lambda _: None,
+                ),
+                state_dir=td,
+            )
+            check(f"{tool_name} remains blocked", code == 2, f"got {code}")
+            check(
+                f"{tool_name} remains approval-required",
+                err is not None and "承認が必要" in err,
+                f"err={err!r}",
+            )
+
+
+def test_host_interaction_payload_schema_remains_host_owned() -> None:
+    print("\n[Host Interaction] Claude owns host-tool payload schemas")
+    with tempfile.TemporaryDirectory() as td:
+        opaque_host_payloads = (
+            (
+                "AskUserQuestion",
+                {
+                    "questions": [{"futureHostField": {"shape": "owned-by-claude"}}],
+                    "futureTopLevelField": True,
+                },
+            ),
+            (
+                "EnterPlanMode",
+                {"futureHostField": {"shape": "owned-by-claude"}},
+            ),
+            (
+                "ExitPlanMode",
+                {
+                    "plan": "",
+                    "planFilePath": "",
+                    "futureHostField": {"shape": "owned-by-claude"},
+                },
+            ),
+        )
+        for tool_name, tool_input in opaque_host_payloads:
+            code, err = hook.evaluate_invocation(
+                {"tool_name": tool_name, "tool_input": tool_input},
+                state_dir=td,
+            )
+            check(f"opaque {tool_name} payload reaches Claude", code == 0, f"got {code}, err={err!r}")
+            check(f"opaque {tool_name} payload creates no Harness decision", err is None, f"err={err!r}")
+
+
+def test_host_interaction_does_not_bypass_activation_verification() -> None:
+    print("\n[Host Interaction] Host pass-through never bypasses activation verification")
+    valid_inputs = {
+        "AskUserQuestion": {
+            "questions": [
+                {
+                    "question": "Continue?",
+                    "header": "Confirm",
+                    "options": [{"label": "Yes"}, {"label": "No"}],
+                }
+            ]
+        },
+        "EnterPlanMode": {},
+        "ExitPlanMode": {},
+        "ToolSearch": {},
+    }
+    with tempfile.TemporaryDirectory() as td:
+        activation_path = os.path.join(td, "activation.json")
+        with open(activation_path, "w", encoding="utf-8") as activation:
+            json.dump(
+                {
+                    "schema": "local-execution-lease-activation.v0",
+                    "mode": "active",
+                },
+                activation,
+            )
+
+        for tool_name in valid_inputs:
+            code, err = hook.evaluate_invocation(
+                {"tool_name": tool_name, "tool_input": valid_inputs[tool_name]},
+                state_dir=td,
+            )
+            check(f"{tool_name} with invalid activation exits 2", code == 2, f"got {code}")
+            check(
+                f"{tool_name} still reports activation failure",
+                err is not None and "ACTIVATION_ERROR" in err,
+                f"err={err!r}",
+            )
+
+        with open(activation_path, "w", encoding="utf-8") as activation:
+            json.dump(
+                {
+                    "schema": "local-execution-lease-activation.v0",
+                    "mode": "active",
+                    "runtime_root_digest": "0" * 64,
+                },
+                activation,
+            )
+
+        for tool_name in valid_inputs:
+            code, err = hook.evaluate_invocation(
+                {"tool_name": tool_name, "tool_input": valid_inputs[tool_name]},
+                install_dir=ROOT_DIR,
+                state_dir=td,
+            )
+            check(f"{tool_name} with closure mismatch exits 2", code == 2, f"got {code}")
+            check(
+                f"{tool_name} still reports closure tamper",
+                err is not None and "ACTIVATION_TAMPER" in err,
+                f"err={err!r}",
+            )
+
+
 def test_webfetch_blocked_as_external_mutation() -> None:
     print("\n[BLOCK] WebFetch (EXTERNAL_MUTATION) -> exit 2")
     p = run_hook_subproc({"tool_name": "WebFetch", "tool_input": {"url": "https://example.com"}})
@@ -1807,6 +2086,10 @@ def main() -> None:
     test_glob_directory_symlink_traversal_fails_closed()
     test_unrecognized_bash_fails_closed()
     test_unrecognized_tool_fails_closed()
+    test_exact_host_interaction_tools_reach_claude_without_harness_authority()
+    test_non_interaction_unknown_tools_remain_fail_closed()
+    test_host_interaction_payload_schema_remains_host_owned()
+    test_host_interaction_does_not_bypass_activation_verification()
     test_webfetch_blocked_as_external_mutation()
     test_websearch_requires_approval_as_external_mutation()
     test_malformed_json_input_fails_closed()

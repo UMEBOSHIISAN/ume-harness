@@ -1,6 +1,6 @@
 {
   "name": "ume-harness",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Japanese-first harness that organizes ambiguous human requests into bounded local-work previews and provides a Claude Code Host Adapter. The standalone CLI does not execute work; external consequential authority and any future Mothership bridge remain separate.",
   "license": "MIT",
   "repository": "https://github.com/UMEBOSHIISAN/ume-harness-engineering",
@@ -13,7 +13,7 @@
     ],
     "deferred_reason": "Gemma has no v0 CLI route. Historical semantic runs are recorded in PHASE4_HOLD.md, but their raw evidence is not in the current release closure, so no current numeric model-performance claim is made.",
     "semantic_evidence": "CURRENT_RELEASE_GRADE_RESULT_UNKNOWN — tests/case1_v2_sampling_contract.md defines the measurement contract; fresh raw evidence is required for a new support claim.",
-    "claude_host_evidence": "STATIC_ADAPTER_TESTED / PHYSICAL_3HOOK_E2E_PENDING — test-profile command mapping, expected-state/out-of-band, and autonomous Stop host wiring are not implemented.",
+    "claude_host_evidence": "STATIC_ADAPTER_TESTED / PHYSICAL_INTERACTIVE_CLAUDE_3HOOK_E2E_DEMONSTRATED — test-profile command mapping, expected-state/out-of-band, and autonomous Stop host wiring are not implemented.",
     "note": "bin/ume-harness is the single implemented CLI preview entrypoint. setup connects exactly three canonical Claude hook commands; setup --disconnect and uninstall remove only those exact commands. install, identity verification, disconnect, and uninstall are covered by the isolated lifecycle test.",
     "portability_trial": "macOS arm64 isolated lifecycle demonstrated; Linux/POSIX expected but unverified; Windows native unsupported."
   },

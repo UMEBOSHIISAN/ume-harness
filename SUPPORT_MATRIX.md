@@ -1,4 +1,4 @@
-# Support Matrix (v0.1.5 generated public release mirror / 2026-09-04)
+# Support Matrix (v0.1.6 generated public release mirror / 2026-09-05)
 
 `supported`を単一ラベルで扱わず、Semantic Interpretation、Claude Host Adapter、
 Platformの3面に分ける。単体テスト結果をphysical host proofへ昇格させず、releaseから
@@ -25,7 +25,11 @@ Platformの3面に分ける。単体テスト結果をphysical host proofへ昇�
 | PreToolUse path/Tier・persisted edit capability・worktree enforcement | **implemented / unit+integration tested** | `adapters/claude-code/lease_gate_runner.py`, `tests/test_claude_code_adapter.py` |
 | Persisted test profile → constrained command execution | **not wired** | Stateは保持するがClaude command-profile mappingなし。test-only Leaseは任意Bashを許可しない |
 | PreToolUse / PermissionRequest / PostToolUseFailure structured presentation | **implemented / static adapter tested** | 3 hook scriptsとadapter tests |
-| Physical live Claude 3-hook presentation | **pending exact-candidate E2E** | Static fixturesはlive Claude UI evidenceではない |
+| AskUserQuestion / ExitPlanMode host-interaction path | **implemented / static adapter tested** | activation/closure attestation後にexact名だけをClaudeへ返す。回答・許可・authorityは生成しない |
+| ToolSearch host capability discovery | **implemented / static adapter tested** | Claudeの遅延tool schema loaderだけをexact名で返す。ロード後の実tool invocationは別PreToolUseで再判定し、許可を継承しない |
+| EnterPlanMode host-interaction path | **defensive compatibility / static runner tested** | built-in toolとしてexact名を扱うが、live ClaudeがPreToolUse eventを発火することは未確認 |
+| Physical interactive Claude 3-hook + host interaction | **physically demonstrated** | Installed exact candidate `025c4cf` lineage was exercised with ToolSearch, EnterPlanMode, AskUserQuestion, ExitPlanMode, Read, Write, and PostToolUseFailure; evidence is kept outside the source tree |
+| Non-interactive `claude -p` host interaction | **not claimed** | Harnessは回答、`updatedInput`、approval、authorityを合成しない |
 | Lease expected-state / concurrent / out-of-band host enforcement | **not wired / experimental** | Core state machineryのみ実装。Claude operation lifecycleは未接続 |
 | Autonomous Claude Stop | **not wired** | acceptance predicateのみ実装。Stop hookなし |
 | Local approval-token resume | **not wired** | `APPROVAL_REQUIRED`はblockするがtoken consume/resume経路なし |
@@ -50,5 +54,6 @@ pytest -q tests ux/japanese-human-layer/tests
 
 上記Structural GateはLLM不要。Semantic Gateを再主張する場合は、
 `tests/case1_v2_sampling_contract.md`どおりfresh 3 batch × 10 trial/modelを実施し、
-raw evidenceをreleaseから辿れる形で保持する。Physical Claude host supportは、exact candidate
-commitとrelease digestに対する3-hook live E2Eを別途必要とする。
+raw evidenceをreleaseから辿れる形で保持する。Physical claimは、exact candidate commitと
+installed release digestに対するinteractive 3-hook live E2Eの範囲に限る。非対話`claude -p`、
+MCP実行、未知toolのpass-throughはclaimしない。

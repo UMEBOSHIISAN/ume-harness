@@ -1,8 +1,8 @@
 # UME-HARNESS
 
-[日本語](README.md) · Technical Preview · [v0.1.5](https://github.com/UMEBOSHIISAN/ume-harness/releases/tag/v0.1.5)
+[日本語](README.md) · Technical Preview · [v0.1.6](https://github.com/UMEBOSHIISAN/ume-harness/releases/tag/v0.1.6)
 
-This main-branch README includes unreleased public-surface and onboarding follow-up to the historical v0.1.5 release. The published v0.1.5 distribution bytes are not rewritten.
+This main-branch README includes unreleased public-surface and onboarding follow-up to the historical v0.1.6 release. The published v0.1.6 distribution bytes are not rewritten.
 
 [![CI](https://github.com/UMEBOSHIISAN/ume-harness/actions/workflows/ci.yml/badge.svg)](https://github.com/UMEBOSHIISAN/ume-harness/actions/workflows/ci.yml)
 
@@ -66,9 +66,10 @@ An offline path accepts stored fixture output without an API call.
 The adapter handles local leases and worktree, path, and capability boundaries
 for Claude Code. Its three hooks and Lease Gate have static and integration tests.
 
-Claude Code is the first integrated and validated Host Adapter. Physical live
-E2E on the exact candidate bytes remains a separate gate and is not claimed by
-this release.
+Claude Code is the first integrated and validated Host Adapter. In v0.1.6,
+interactive physical live E2E was demonstrated from installed exact candidate
+bytes. Non-interactive `claude -p`, MCP execution, and arbitrary unknown-tool
+pass-through remain outside this release's claims.
 
 ## Responsibility split with Mothership
 
@@ -138,12 +139,12 @@ The default prefix is `~/.local`. If the command is not on `PATH`:
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-To update from v0.1.4 to v0.1.5, use the new source checkout to verify and
+To update from v0.1.5 to v0.1.6, use the new source checkout to verify and
 remove the old release before installing the new one. `--force` is not a
 cross-version update path.
 
 ```bash
-./scripts/uninstall.sh --version v0.1.4 --settings-path "${HOME}/.claude/settings.json" --yes
+./scripts/uninstall.sh --version v0.1.5 --settings-path "${HOME}/.claude/settings.json" --yes
 ./scripts/install.sh
 ```
 
@@ -169,7 +170,7 @@ the settings cannot be parsed and revalidated safely.
 ### Diagnose and uninstall
 
 ```bash
-python3 ~/.local/lib/ume-harness/v0.1.5/scripts/health_check.py
+python3 ~/.local/lib/ume-harness/v0.1.6/scripts/health_check.py
 # or, from the repository
 python3 ./scripts/health_check.py
 
@@ -209,7 +210,7 @@ signature verifier.
 
 ## Technical documentation
 
-- [Human Layer (published v0.1.5 design material)](ux/japanese-human-layer/README.md)
+- [Human Layer (published v0.1.6 design material)](ux/japanese-human-layer/README.md)
 - [Claude Code adapter](adapters/claude-code/README.md)
 - [Authority contract](contracts/authority_contract.md)
 - [Tool policy](contracts/tool_policy.md)

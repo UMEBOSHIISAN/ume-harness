@@ -616,12 +616,12 @@ def test_manifest_matches_explicit_release_closure():
         "MANIFEST.md のversionと実測test countがcurrent releaseに一致",
         f"# Release Manifest (ume-harness v{version})" in manifest_text
         and f"Measured against the v{version} release-candidate bytes" in manifest_text
-        and "  -> 318 passed" in manifest_text,
+        and "  -> 324 passed" in manifest_text,
     )
     check(
         "配布security/support文書のversionがcurrent releaseに一致",
         f"v{version} attests the explicit protected-runtime closure" in security_text
-        and f"# Support Matrix (v{version} generated public release mirror / 2026-09-04)" in support_matrix_text,
+        and f"# Support Matrix (v{version} generated public release mirror / 2026-09-05)" in support_matrix_text,
     )
 
 
@@ -631,9 +631,9 @@ def test_positioning_assets_are_public_only_and_bounded():
         package_manifest = json.load(f)
     release_payload = package_manifest["release"]["payload"]
     install_payload = package_manifest["install_payload"]
-    assert package_manifest["version"] == "0.1.5"
+    assert package_manifest["version"] == "0.1.6"
     with open(os.path.join(pkg_root, "VERSION"), encoding="utf-8") as f:
-        assert f.read().strip() == "0.1.5"
+        assert f.read().strip() == "0.1.6"
 
     for relative in POSITIONING_ASSETS:
         assert os.path.isfile(os.path.join(pkg_root, relative)), relative
