@@ -40,7 +40,8 @@ def main() -> int:
         
         # Native CC PostToolUseFailure schema embeds "Exit code N" in error string
         m = re.search(r"Exit code ([0-9]{1,3})(?![0-9])", error_msg)
-        exit_code = m.group(1) if m else "UNKNOWN"
+        exit_code = m.group(1) if m else None
+        tool_name = data.get("tool_name")
 
         if is_interrupt:
             tmpl = pack.JA_CONCEPT_PACK.get("error.interrupted", {})
@@ -48,7 +49,10 @@ def main() -> int:
             badge = tmpl.get("badge", "⏹️ 中断 / 処理未完了")
         else:
             tmpl = pack.JA_CONCEPT_PACK.get("error.command_failed", {})
-            headline = tmpl.get("headline", "🔴 コマンドの実行が途中で失敗しました（終了コード: {exit_code}）").format(exit_code=exit_code)
+            if exit_code is not None:
+                headline = tmpl.get("headline", "🔴 コマンドの実行が途中で失敗しました（終了コード: {exit_code}）").format(exit_code=exit_code)
+            else:
+                headline = "🔴 ツールの処理に失敗しました"
             badge = tmpl.get("badge", "⚠️ 処理未完了 / 変更状態を確認してください")
 
         # Error bodies may contain command text, credentials or customer data.
@@ -58,6 +62,17 @@ def main() -> int:
             "   現在のファイルの変更状態を確認してください。\n"
             "   エラー本文は再掲しません。詳細はClaude Code本体のエラー表示を確認してください。"
         )
+
+        # Only exact built-in read/search names get read-only guidance. Never
+        # echo an untrusted tool name or infer a process exit from a file error.
+        if tool_name in ("Read", "Grep", "Glob"):
+            operation = "読み取り" if tool_name == "Read" else "検索"
+            headline = f"🔴 {operation}に失敗しました" if not is_interrupt else f"🛑 {operation}が中断されました"
+            badge = f"⚠️ {operation}未完了"
+            explanation = (
+                f"{operation}結果を取得できませんでした。対象の指定やアクセス権限を確認してください。\n"
+                "   エラー本文は再掲しません。詳細はClaude Code本体のエラー表示を確認してください。"
+            )
 
         banner = (
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"

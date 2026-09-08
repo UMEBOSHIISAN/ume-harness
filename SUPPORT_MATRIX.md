@@ -55,6 +55,21 @@ fixturesの自己整合性テストは、モデル精度や作業の実行成功
 | Autonomous Claude Stop | **not wired** | acceptance predicateのみ実装。Stop hookなし |
 | Local approval-token resume | **not wired** | `APPROVAL_REQUIRED`はblockするがtoken consume/resume経路なし |
 
+## 2026-09-08 user-reported trial (partial evidence)
+
+A user-supplied fresh Claude transcript shows the Japanese PostToolUseFailure
+message after a Read failure. It also reports a scratch-file Write, a Write into
+a personal hook directory, a sandbox-denied Bash removal, and human cleanup.
+This is evidence of the observed failure presentation, not proof that public
+Harness owns the local SessionStart/front-door/rules or enforces all file tools.
+The package's default presentation profile has no PreToolUse enforcement.
+The reported Read wording was misleading and is corrected in this candidate.
+
+Protected-path mutation is not an accepted smoke-test procedure. The permission
+allow/ask/deny matrix and exact revised-candidate interactive acceptance remain
+pending. Local rules and native permission policy are separate from public package
+acceptance; no blanket “no duplicate gates” or “safe across all tools” claim follows.
+
 ## Platform
 
 | Platform | Status | Boundary |

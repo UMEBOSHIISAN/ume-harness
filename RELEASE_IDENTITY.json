@@ -15,7 +15,7 @@
     },
     "MANIFEST.md": {
       "mode": "100644",
-      "sha256": "80cbf920892f840b4b9f891e5d7bdc34ef1fe775689f3a3065a7310e73ca3a1e"
+      "sha256": "492c31069d9eb1d5b715acd9ef1ea8b0ddfbf801c56c8ea987a781de42d29faa"
     },
     "NOTICE": {
       "mode": "100644",
@@ -31,11 +31,11 @@
     },
     "README.en.md": {
       "mode": "100644",
-      "sha256": "cd4d520b758dc4c321018fe883a99b5261e685abd03fa3826e3bebae253580a2"
+      "sha256": "f34536eadb393a8ea3e91be6acbf5c0548ac32a5c1adc4519505a38d403b7b7c"
     },
     "README.md": {
       "mode": "100644",
-      "sha256": "bc60d281c3f7b33f127878f20509bb88bbe1ca544b959995a119761a1a1b8b48"
+      "sha256": "12e437f6f5ae07bf247e528a41df69e4d29ceaa3d788307e53e8c50f36d51375"
     },
     "SECURITY.md": {
       "mode": "100644",
@@ -43,7 +43,7 @@
     },
     "SUPPORT_MATRIX.md": {
       "mode": "100644",
-      "sha256": "8ae67239b3cbf540eb0d9157c446581ecb1a241faedfde47d6bdde6447193956"
+      "sha256": "9803e4f1c1e7b29c2013799b10ba5f77a805d3f20107afcf6ec4d30424498a0b"
     },
     "VERSION": {
       "mode": "100644",
@@ -63,7 +63,7 @@
     },
     "adapters/claude-code/posttooluse_failure_hook.py": {
       "mode": "100755",
-      "sha256": "d8f69ef95f690f73ad532bd5df97961b7721f79809baf4c74503bb3fad252b29"
+      "sha256": "644bd1eef3afc4d2b6aa5566c393b306c06cf77c181714b0a635c4109e86ee70"
     },
     "adapters/claude-code/pretooluse_hook.py": {
       "mode": "100755",
@@ -223,7 +223,7 @@
     },
     "scripts/health_check.py": {
       "mode": "100755",
-      "sha256": "fa6c461a139469b88b5bc27b108b8bd33550ed734a7523ec872263c1c3494f5b"
+      "sha256": "3ab850fee8224ef564cd14d117e40d6cbf7ab13249e6cf09af724bb323546e86"
     },
     "scripts/install.sh": {
       "mode": "100755",
@@ -231,7 +231,7 @@
     },
     "scripts/release_promote.py": {
       "mode": "100755",
-      "sha256": "8d8f9dd7c071a6557c9980d4ce0c2e7bb88f5f3b1877b6865f064c2fb6c46531"
+      "sha256": "b525d20aeaf30fd3ef8e80d9a48b604271e47ca301e10fa3be8d70c7eeb2e31d"
     },
     "scripts/uninstall.sh": {
       "mode": "100755",
@@ -299,7 +299,7 @@
     },
     "tests/test_presentation_safety.py": {
       "mode": "100644",
-      "sha256": "550cb68503a3cc4e10a73a1feefd396f4d22d3433a770507f9f864b3c5dccbdf"
+      "sha256": "450bda9e89a7302a7d4a999eed4dd3007fae5b5930f5ad945ad4ca88f97b5ded"
     },
     "tests/test_pretooluse_decisions.py": {
       "mode": "100644",
@@ -351,7 +351,7 @@
     }
   },
   "schema": "ume-harness-release-identity.v1",
-  "source_commit": "36654358379c3afb6c0b73e310d5e541fda7a8d9",
+  "source_commit": "ebdd45e6f1f78d9cacf894a68afb51da31f671a7",
   "source_payload_count": 87,
-  "source_payload_root_sha256": "cdc9056d612bc7a46732dd4596f59adf018205560262be7e3d587c56e385aab6"
+  "source_payload_root_sha256": "ca3a9be8f2033ea7b71f813bc42634c32c783d3a4b97a8f9f19bd4ff8cc6c130"
 }

@@ -288,6 +288,33 @@ local user's separately adjusted Stop/native-permission rules are not distribute
 See [Claude hooks](https://code.claude.com/docs/en/hooks) and
 [settings](https://code.claude.com/docs/en/settings).
 
+## Public package versus personal configuration
+
+Standard setup adds only `PermissionRequest` and `PostToolUseFailure`.
+`SessionStart`, `UserPromptSubmit`, front-door routing, personal rules/skills,
+MCP integrations and local write gates are not shipped features of this package.
+Existing personal configuration is preserved. A local conversation therefore does
+not establish behavior of the public package alone. The `--managed` PreToolUse
+hook is a separate explicit connection.
+
+Claude Code's Bash sandbox constrains Bash and its child processes. Built-in
+Write/Edit tools use Claude Code's `Edit` permission rules. Sandbox path limits
+alone do not establish a write prohibition across every tool; standard Harness
+setup does not add those prohibitions. Check actual settings, hook registration
+and tool permissions separately. Do not test protection by writing or deleting
+real configuration files or hook directories.
+See [Bash sandbox](https://code.claude.com/docs/en/sandboxing) and
+[Read/Edit permissions](https://code.claude.com/docs/en/permissions#read-and-edit).
+
+Determine the active version from the invoked CLI's target, verified installed
+bytes, and registered hook paths. Multiple version directories do not establish
+concurrent activation. Check references and ownership before using the existing
+uninstall procedure for an older version.
+
+Read/Grep/Glob failures describe reading or searching. They do not invent an
+`UNKNOWN` exit code or request mutation checks solely because that read failed.
+Write and unknown-tool failures still leave mutation state unconfirmed.
+
 ## Current limitations
 
 - UME-HARNESS is not an OS sandbox; it assumes a trusted host entrypoint.

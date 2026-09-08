@@ -269,3 +269,30 @@ def test_long_input_finishes_within_subprocess_deadline(name, kind, tmp_path):
         payload["error"] = f"Exit code 127\n{INLINE}\n{BEARER}\n" * 10000
         payload["is_interrupt"] = kind == "interrupt"
     assert run_hook(name, payload, tmp_path) is not None
+
+
+@pytest.mark.parametrize("tool_name", ["Read", "Grep", "Glob"])
+def test_read_only_failure_does_not_claim_command_or_partial_write(tool_name, tmp_path):
+    output = run_hook("posttooluse_failure_hook.py", {
+        "tool_name": tool_name, "error": "File not found " + INLINE,
+    }, tmp_path)
+    message = output["systemMessage"]
+    assert "読み取り" in message or "検索" in message
+    assert "コマンド" not in message
+    assert "終了コード" not in message
+    assert "変更状態" not in message
+    assert "一部の変更" not in message
+    assert_safe(message)
+    assert "Claude Code" in message
+
+
+@pytest.mark.parametrize("tool_name", ["Bash", "Write", "unknown-" + INLINE])
+def test_failure_without_exit_code_does_not_invent_one(tool_name, tmp_path):
+    output = run_hook("posttooluse_failure_hook.py", {
+        "tool_name": tool_name, "error": "Failed " + INLINE,
+    }, tmp_path)
+    message = output["systemMessage"]
+    assert "終了コード" not in message
+    assert "UNKNOWN" not in message
+    assert "変更" in message
+    assert_safe(message)

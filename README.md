@@ -271,6 +271,29 @@ UMEの `--managed` はCCの組織管理設定とは無関係です。組織側�
 仕様参照: [Claude Code hooks](https://code.claude.com/docs/en/hooks)、
 [設定](https://code.claude.com/docs/en/settings)。
 
+## 公開パッケージと個人設定の違い
+
+標準接続でこのパッケージが追加するのは `PermissionRequest` と `PostToolUseFailure` の2本です。
+`SessionStart`、`UserPromptSubmit`、front-door分類、個人用のrules・skills・MCP・write-gateは
+本パッケージの機能ではありません。既存の個人設定をそのまま保持するため、ローカルの会話だけで
+公開パッケージ単体の動作を判定しないでください。`--managed` の `PreToolUse` は別の明示的接続です。
+
+Claude CodeのBash sandboxはBashとその子プロセスを制限します。組み込みのWrite／Editには
+Claude Codeの `Edit` 権限ルールが適用されます。sandboxのパス制限だけで全ツールの書き込みを
+禁止したとは判断できません。標準接続がこれらの禁止設定を追加することもありません。
+保護対象の確認には、実際の設定・hookの登録・ツールごとの権限を照合してください。
+本物の設定やhookフォルダへの書き込み・削除を発火テストに使わないでください。
+仕様: [Bash sandbox](https://code.claude.com/docs/en/sandboxing)、
+[Read／Edit権限](https://code.claude.com/docs/en/permissions#read-and-edit)。
+
+版の確認では、フォルダ名の一覧ではなく、実行するCLIの参照先・診断のバイト照合・設定に登録された
+hookの参照先を確認します。複数の版が残っていても、同時に動いているとは限りません。
+古い版は現行の参照がないことと所有権を確認してから、既存のuninstall手順で扱います。
+
+Read／Grep／Globの失敗は読み取り・検索の失敗として説明します。取得できなかった終了コードを
+`UNKNOWN`として表示したり、その操作だけを根拠に変更状態の確認を求めたりしません。
+書き込みや不明なツールの失敗では、変更の有無を断定しません。
+
 ## 現在の制約
 
 - UME-HARNESSはOS sandboxではありません。trusted host entrypointを前提にします。
