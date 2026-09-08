@@ -351,7 +351,7 @@
     }
   },
   "schema": "ume-harness-release-identity.v1",
-  "source_commit": "2573df0c5d8e9fe30036c69bf6b52aaa9c6d0cb0",
+  "source_commit": "7be7c8b550b0c33c0b223a8e4c75ef8dcf360c91",
   "source_payload_count": 87,
   "source_payload_root_sha256": "1c33d84ba8afb25535c6c16ccd2fa3acda02c218ac0e9722595f9dae89d3b13a"
 }
