@@ -1,6 +1,6 @@
 {
   "name": "ume-harness",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Japanese-first harness that organizes ambiguous human requests into bounded local-work previews and provides a Claude Code Host Adapter. The standalone CLI does not execute work; external consequential authority and any future Mothership bridge remain separate.",
   "license": "MIT",
   "repository": "https://github.com/UMEBOSHIISAN/ume-harness-engineering",
@@ -14,7 +14,7 @@
     "deferred_reason": "Gemma has no v0 CLI route. Historical semantic runs are recorded in PHASE4_HOLD.md, but their raw evidence is not in the current release closure, so no current numeric model-performance claim is made.",
     "semantic_evidence": "CURRENT_RELEASE_GRADE_RESULT_UNKNOWN — tests/case1_v2_sampling_contract.md defines the measurement contract; fresh raw evidence is required for a new support claim.",
     "claude_host_evidence": "STATIC_ADAPTER_TESTED / PHYSICAL_INTERACTIVE_CLAUDE_3HOOK_E2E_DEMONSTRATED — test-profile command mapping, expected-state/out-of-band, and autonomous Stop host wiring are not implemented.",
-    "note": "bin/ume-harness is the single implemented CLI preview entrypoint. setup connects exactly three canonical Claude hook commands; setup --disconnect and uninstall remove only those exact commands. install, identity verification, disconnect, and uninstall are covered by the isolated lifecycle test.",
+    "note": "Development candidate: bin/ume-harness is the CLI preview entrypoint. Default setup connects two presentation hooks; explicit setup --managed adds PreToolUse enforcement. Existing managed registration is preserved by default setup. Disconnect and uninstall own only exact canonical hook commands. Fresh interactive candidate acceptance is pending.",
     "portability_trial": "macOS arm64 isolated lifecycle demonstrated; Linux/POSIX expected but unverified; Windows native unsupported."
   },
   "release_identity": {
@@ -132,6 +132,13 @@
       "tests/case1_acceptance_v2_spec.md",
       "tests/case1_v2_sampling_contract.md",
       "tests/test_claude_code_adapter.py",
+      "tests/test_hook_registration_diagnostics.py",
+      "tests/test_audit_boundary_regressions.py",
+      "tests/test_live_search_regression.py",
+      "tests/test_presentation_safety.py",
+      "tests/test_local_work_policy.py",
+      "tests/test_local_workflow_smoke.py",
+      "tests/test_pretooluse_decisions.py",
       "tests/test_cli.py",
       "tests/test_human_layer_adapter.py",
       "tests/test_local_execution_gate.py",

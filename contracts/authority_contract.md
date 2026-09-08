@@ -149,6 +149,12 @@ deploy、publish、sendへauthorityを伝播させない。これらは常に別
 
 ## §3 Authority Tier Model（5層・役割ベース）
 
+v0.1.7 development candidateのClaude hostでは、通常プロジェクトのコード編集は
+host本体のpermission flowへ戻す。コード拡張子や一般的な`src/scripts/tests`という
+名前は追加承認の根拠ではない。下表のruntime既定は明示管理された領域のCore契約を
+示す。明示されたLease制限と保護対象は維持する。通常編集にはLeaseを必須にしない。
+詳細: `tool_policy.md` → Local-work host policy。
+
 ```
 TIER_CONSTITUTION   人間専用・AI書込は永久に不可（プロジェクトの憲法/方針文書）
 TIER_SECRETS        誰も自動書込不可（.env / credentials / keys 等）

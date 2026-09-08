@@ -22,7 +22,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "v0.1.6"
+VERSION = "v0.1.7"
 CANONICAL_REPOSITORY = "https://github.com/UMEBOSHIISAN/ume-harness-engineering.git"
 PUBLIC_MIRROR_REPOSITORY = "https://github.com/UMEBOSHIISAN/ume-harness.git"
 OWNED_EVENTS = ("PreToolUse", "PermissionRequest", "PostToolUseFailure")
@@ -116,7 +116,7 @@ def test_installed_hooks_execute_from_prefix_with_space(tmp_path):
 
     cli = prefix / "bin/ume-harness"
     configured = _run(
-        [cli, "setup", "--yes", "--settings-path", settings_path],
+        [cli, "setup", "--managed", "--yes", "--settings-path", settings_path],
     )
     assert configured.returncode == 0, configured.stdout + configured.stderr
 
@@ -498,6 +498,166 @@ def test_atomic_settings_write_preserves_existing_mode_and_owner():
         assert _read_json(settings_path) == {"theme": "light"}
 
 
+@pytest.mark.parametrize("operation", ["setup", "disconnect"])
+def test_settings_external_update_before_commit_is_preserved(tmp_path, monkeypatch, operation):
+    """Removing the baseline check must reproduce the lost deny/unknown-field update."""
+    hss = _load_module(ROOT / "runtime/hook_setup_service.py", "settings_external_update")
+    path = tmp_path / "settings.json"
+    _write_json(path, {"permissions": {"deny": ["old-deny"]}})
+    if operation == "disconnect":
+        assert hss.install_hooks_to_settings(str(ROOT), str(path))[0]
+    external = _read_json(path)
+    external["permissions"]["deny"].append("new-deny")
+    external["unknown-setting"] = {"preserve": True}
+    original = hss._atomic_write_settings
+
+    def interleave(target, data, **kwargs):
+        assert target == str(path)
+        _write_json(path, external)
+        return original(target, data, **kwargs)
+
+    monkeypatch.setattr(hss, "_atomic_write_settings", interleave)
+    operation_fn = hss.install_hooks_to_settings if operation == "setup" else hss.disconnect_hooks_from_settings
+    ok, message = operation_fn(str(ROOT), str(path))
+    assert ok is False
+    assert "競合" in message
+    assert _read_json(path) == external
+
+
+@pytest.mark.parametrize("first", ["setup", "disconnect"])
+@pytest.mark.parametrize("second", ["setup", "disconnect"])
+def test_settings_writers_share_nonblocking_lock(tmp_path, monkeypatch, first, second):
+    """A second UME process must not commit while the first read/modify/write is active."""
+    hss = _load_module(ROOT / "runtime/hook_setup_service.py", "settings_two_writers")
+    path = tmp_path / "settings.json"
+    _write_json(path, {"permissions": {"deny": ["keep"]}})
+    if first == "disconnect":
+        assert hss.install_hooks_to_settings(str(ROOT), str(path))[0]
+    original = hss._atomic_write_settings
+    second_result = []
+
+    def interleave(target, data, **kwargs):
+        code = (
+            "import json,sys;sys.path.insert(0,sys.argv[1]);import hook_setup_service as h;"
+            "f=h.install_hooks_to_settings if sys.argv[4]=='setup' else h.disconnect_hooks_from_settings;"
+            "print(json.dumps(f(sys.argv[2],sys.argv[3])))"
+        )
+        proc = subprocess.run([sys.executable, "-B", "-c", code, str(ROOT / "runtime"),
+                               str(ROOT), str(path), second], capture_output=True, text=True, timeout=10)
+        assert proc.returncode == 0, proc.stderr
+        second_result.append(json.loads(proc.stdout))
+        return original(target, data, **kwargs)
+
+    monkeypatch.setattr(hss, "_atomic_write_settings", interleave)
+    fn = hss.install_hooks_to_settings if first == "setup" else hss.disconnect_hooks_from_settings
+    ok, message = fn(str(ROOT), str(path))
+    assert ok, message
+    assert second_result[0][0] is False
+    assert "未反映" in second_result[0][1]
+    assert _read_json(path)["permissions"] == {"deny": ["keep"]}
+    assert hss.contains_owned_hooks(_read_json(path), str(ROOT)) == (first == "setup")
+
+
+def test_settings_post_commit_external_change_is_not_rolled_back(tmp_path, monkeypatch):
+    hss = _load_module(ROOT / "runtime/hook_setup_service.py", "settings_post_commit_change")
+    path = tmp_path / "settings.json"
+    _write_json(path, {"theme": "old"})
+    original = hss.os.replace
+    external = {"permissions": {"deny": ["keep-after-replace"]}}
+
+    def interleave(source, target):
+        original(source, target)
+        _write_json(Path(target), external)
+
+    monkeypatch.setattr(hss.os, "replace", interleave)
+    ok, message = hss.install_hooks_to_settings(str(ROOT), str(path))
+    assert ok is False
+    assert "反映後" in message
+    assert _read_json(path) == external
+
+
+def test_settings_noncooperating_writer_after_last_check_is_known_limit(tmp_path, monkeypatch):
+    """Characterize, not claim to eliminate, the compare/replace race window."""
+    hss = _load_module(ROOT / "runtime/hook_setup_service.py", "settings_known_race_window")
+    path = tmp_path / "settings.json"
+    _write_json(path, {"theme": "old"})
+    original = hss.os.replace
+
+    def interleave(source, target):
+        _write_json(Path(target), {"permissions": {"deny": ["too-late-to-detect"]}})
+        original(source, target)
+
+    monkeypatch.setattr(hss.os, "replace", interleave)
+    ok, message = hss.install_hooks_to_settings(str(ROOT), str(path))
+    assert ok, message
+    assert "permissions" not in _read_json(path)
+    assert hss.contains_owned_hooks(_read_json(path), str(ROOT))
+
+
+def test_settings_lock_survives_replace_and_parent_path_alias(tmp_path, monkeypatch):
+    hss = _load_module(ROOT / "runtime/hook_setup_service.py", "settings_lock_inode")
+    directory = tmp_path / "real"
+    directory.mkdir()
+    alias = tmp_path / "alias"
+    alias.symlink_to(directory, target_is_directory=True)
+    path = directory / "settings.json"
+    _write_json(path, {"permissions": {"deny": ["keep"]}})
+    original = hss.os.replace
+    secondary = []
+
+    def after_replace(source, target):
+        original(source, target)
+        code = ("import json,sys;sys.path.insert(0,sys.argv[1]);import hook_setup_service as h;"
+                "print(json.dumps(h.disconnect_hooks_from_settings(sys.argv[2],sys.argv[3])))")
+        proc = subprocess.run([sys.executable, "-B", "-c", code, str(ROOT / "runtime"),
+                               str(ROOT), str(alias / "settings.json")],
+                              capture_output=True, text=True, timeout=10)
+        assert proc.returncode == 0, proc.stderr
+        secondary.append(json.loads(proc.stdout))
+
+    monkeypatch.setattr(hss.os, "replace", after_replace)
+    assert hss.install_hooks_to_settings(str(ROOT), str(path))[0]
+    assert secondary[0][0] is False
+    assert hss.contains_owned_hooks(_read_json(path), str(ROOT))
+    monkeypatch.setattr(hss.os, "replace", original)
+    # A completed operation releases the lock without removing its inode.
+    lock = Path(str(path) + ".ume-harness.lock")
+    inode = lock.stat().st_ino
+    assert hss.disconnect_hooks_from_settings(str(ROOT), str(alias / "settings.json"))[0]
+    assert lock.stat().st_ino == inode
+
+
+def test_settings_replace_failure_preserves_current_bytes(tmp_path, monkeypatch):
+    hss = _load_module(ROOT / "runtime/hook_setup_service.py", "settings_save_failure")
+    path = tmp_path / "settings.json"
+    _write_json(path, {"permissions": {"deny": ["keep"]}})
+    before = path.read_bytes()
+
+    def fail_replace(source, target):
+        raise OSError("synthetic replacement failure")
+
+    monkeypatch.setattr(hss.os, "replace", fail_replace)
+    ok, _ = hss.install_hooks_to_settings(str(ROOT), str(path))
+    assert ok is False
+    assert path.read_bytes() == before
+    assert not list(tmp_path.glob("settings_merge_*"))
+
+
+def test_disconnect_final_read_failure_reports_post_commit_state(tmp_path, monkeypatch):
+    hss = _load_module(ROOT / "runtime/hook_setup_service.py", "disconnect_final_read")
+    path = tmp_path / "settings.json"
+    assert hss.install_hooks_to_settings(str(ROOT), str(path))[0]
+
+    def fail_final_read(target):
+        raise OSError("synthetic final read failure")
+
+    monkeypatch.setattr(hss, "_read_settings", fail_final_read)
+    ok, message = hss.disconnect_hooks_from_settings(str(ROOT), str(path))
+    assert ok is False
+    assert "反映後" in message
+    assert not hss.contains_owned_hooks(_read_json(path), str(ROOT))
+
+
 def test_atomic_settings_write_post_commit_durability_failure_reports_applied_change(tmp_path, monkeypatch):
     hss = _load_module(ROOT / "runtime/hook_setup_service.py", "hook_setup_post_commit")
     settings_path = tmp_path / "settings.json"
@@ -551,7 +711,8 @@ def test_disconnect_fails_closed_when_settings_cannot_be_read():
         try:
             disconnected, message = hss.disconnect_hooks_from_settings(str(ROOT), str(settings_path))
             assert disconnected is False
-            assert "読み込みに失敗" in message
+            # Lock acquisition now precedes reading an inaccessible directory.
+            assert "未反映" in message
         finally:
             protected.chmod(0o700)
 
@@ -816,7 +977,7 @@ def test_setup_reconnect_preserves_customized_owned_hook_fields_and_file_bytes()
 
     with tempfile.TemporaryDirectory() as td:
         settings_path = Path(td) / ".claude/settings.json"
-        connected, message = hss.install_hooks_to_settings(str(ROOT), str(settings_path))
+        connected, message = hss.install_hooks_to_settings(str(ROOT), str(settings_path), managed=True)
         assert connected, message
 
         data = _read_json(settings_path)
@@ -1034,7 +1195,7 @@ def test_install_force_refuses_unproven_version_directory_without_touching_it():
         assert not (prefix / "bin/ume-harness").exists()
 
 
-def test_install_force_replaces_only_a_verified_owned_installation():
+def test_install_force_refuses_verified_installation_without_mutation():
     with tempfile.TemporaryDirectory() as td:
         temp_root = Path(td)
         _home, prefix, env = _install(temp_root)
@@ -1084,12 +1245,35 @@ def test_install_force_replaces_only_a_verified_owned_installation():
         ]
         assert installed_runtime_cache == []
 
+        settings_path = _home / ".claude/settings.json"
+        setup = _run(
+            [prefix / "bin/ume-harness", "setup", "--managed", "--yes",
+             "--settings-path", settings_path], env=env,
+        )
+        assert setup.returncode == 0, setup.stdout + setup.stderr
+        state_path = _home / ".ume-harness/state/user-state.json"
+        _write_json(state_path, {"synthetic": "must remain unchanged"})
+
+        def snapshot():
+            # Inodes and mtimes also catch replacing identical bytes or touching
+            # directories; atime is excluded because ownership checks may read.
+            return {
+                str(path): (path.lstat().st_mode, path.lstat().st_ino,
+                            path.lstat().st_mtime_ns,
+                            path.read_bytes() if path.is_file() else None)
+                for root in (prefix, _home)
+                for path in [root, *root.rglob("*")]
+            }
+
+        before = snapshot()
         reinstall = _run(
             ["bash", ROOT / "scripts/install.sh", "--prefix", prefix, "--force"],
             env=env,
         )
 
-        assert reinstall.returncode == 0, reinstall.stdout + reinstall.stderr
+        assert reinstall.returncode != 0, reinstall.stdout + reinstall.stderr
+        assert "Replacement disabled" in reinstall.stderr
+        assert snapshot() == before
         health = _run(
             [sys.executable, installed / "scripts/health_check.py", "--installed-dir", installed, "--prefix", prefix],
             env=env,
@@ -1438,7 +1622,7 @@ def test_final_isolated_lifecycle_closes_owned_state_and_preserves_user_state():
             }.items()
         }
         for event, command in owned.items():
-            assert _commands(configured, event).count(command) == 1
+            assert _commands(configured, event).count(command) == (0 if event == "PreToolUse" else 1)
 
         llm_output = temp_root / "offline.json"
         _write_json(
@@ -1658,6 +1842,8 @@ def test_release_promotion_is_clean_explicit_deterministic_and_one_way():
         release.verify_staged_release(stage_two)
         assert not (stage_one / "ambient-scratch.txt").exists()
         assert (stage_one / generated).is_file()
+        for regression in ("test_live_search_regression.py", "test_audit_boundary_regressions.py", "test_presentation_safety.py"):
+            assert (stage_one / "tests" / regression).read_bytes() == (ROOT / "tests" / regression).read_bytes()
         assert release.compare_trees(stage_one, stage_two) == []
         assert _read_json(stage_one / generated) == _read_json(stage_two / generated)
 

@@ -1,4 +1,15 @@
-# Support Matrix (v0.1.6 generated public release mirror / 2026-09-05)
+# Support Matrix (v0.1.7 candidate)
+
+Historical baseline: v0.1.6 generated public release mirror / 2026-09-05.
+
+Development connection profiles: default `setup` is presentation-only (two
+hooks); `setup --managed` explicitly adds conservative PreToolUse enforcement.
+The enforcement rows below describe that opt-in profile, not ordinary native CC.
+Neither static success nor valid registration inventory proves live host reload.
+
+> Local-work policy開発候補の変更を含みます。以下のv0.1.6の検証記録は歴史的な
+> baselineです。新しいdefer/ask/deny/error、通常編集のLease不要化、登録診断は
+> 候補の独立した検証を必要とし、fresh interactive host acceptanceは未完了です。
 
 機能の基準は2026-09-05のv0.1.6です。説明文の照合・訂正日: 2026-09-08。
 

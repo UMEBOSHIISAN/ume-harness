@@ -15,7 +15,7 @@ import sys
 from typing import Any
 
 
-EXPECTED_ROOT_DIGEST = "eebd7af03bc50ee0028804c31ea09b3280ed137cda0133df33ec3731fe6ca721"
+EXPECTED_ROOT_DIGEST = "f2738ca8e48911edf808af4925bda5b2d687422d0af6b664a1b58bcea836d886"
 IDENTITY_ALGORITHM = "sha256-canonical-path-map-v1"
 IDENTITY_SELF_EXCLUSIONS = frozenset({"scripts/health_check.py"})
 MANDATORY_RELEASE_FILES = frozenset({
@@ -243,7 +243,8 @@ def verify_owned_install(installed_dir: str) -> tuple[bool, str]:
     )
 
 
-def run_diagnostics(installed_dir: str, prefix_dir: str | None = None, json_output: bool = False) -> int:
+def run_diagnostics(installed_dir: str, prefix_dir: str | None = None, json_output: bool = False,
+                    settings_path: str | None = None, state_dir: str | None = None) -> int:
     installed_dir = os.path.abspath(installed_dir)
     if prefix_dir:
         prefix_dir = os.path.abspath(prefix_dir)
@@ -332,6 +333,55 @@ print("IMPORT_OK")
             import_detail = f"Exception: {e}"
     checks.append(("Runtime Module Import Isolation", import_ok, import_detail))
 
+    if settings_path is not None:
+        registration_ok = False
+        registration_detail = "Skipped until release byte identity passes; live effective settings and restart status unknown"
+        if identity_ok:
+            try:
+                proc = subprocess.run(
+                    [sys.executable, "-B", "-c",
+                     "import json, sys; import hook_setup_service as h; "
+                     "print(json.dumps(h.inspect_settings_file(sys.argv[1], sys.argv[2])))",
+                     os.path.abspath(settings_path), installed_dir],
+                    cwd=os.path.join(installed_dir, "runtime"), env=sub_env,
+                    capture_output=True, text=True, timeout=10,
+                )
+                if proc.returncode != 0:
+                    raise ValueError(proc.stderr[:400])
+                inventory = json.loads(proc.stdout)
+                registration_ok = inventory.get("connected_mode") in (
+                    "absent", "disconnected", "presentation", "managed"
+                ) and not inventory.get("findings")
+                registration_detail = json.dumps(inventory, ensure_ascii=False)
+            except Exception as exc:
+                registration_detail = f"File inventory failed: {exc}; live effective settings unknown"
+        checks.append(("Hook Registration File Inventory", registration_ok, registration_detail))
+
+    if state_dir is not None:
+        profile_ok = False
+        profile_detail = "Skipped until release byte identity passes"
+        if identity_ok:
+            try:
+                profile_env = sub_env.copy()
+                profile_env["PYTHONPATH"] += os.pathsep + os.path.join(installed_dir, "adapters", "claude-code")
+                proc = subprocess.run(
+                    [sys.executable, "-B", "-c",
+                     "import json, os, sys; import lease_gate_runner as r; "
+                     "roots = r._protected_roots(sys.argv[1], sys.argv[2]); "
+                     "print(json.dumps({'status': 'valid' if os.path.lexists(os.path.join(sys.argv[1], 'local_work_policy.json')) "
+                     "else 'absent; built-in protection only', 'protected_roots': roots}))",
+                     os.path.abspath(state_dir), installed_dir],
+                    cwd=os.path.join(installed_dir, "runtime"), env=profile_env,
+                    capture_output=True, text=True, timeout=10,
+                )
+                if proc.returncode != 0:
+                    raise ValueError(proc.stderr[-400:])
+                profile_detail = json.dumps(json.loads(proc.stdout), ensure_ascii=False)
+                profile_ok = True
+            except Exception as exc:
+                profile_detail = f"Profile validation failed: {exc}"
+        checks.append(("Local Work Policy Profile", profile_ok, profile_detail))
+
     adapter_files = [
         "adapters/claude-code/lease_gate_runner.py",
         "adapters/claude-code/pretooluse_hook.py",
@@ -394,6 +444,8 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Diagnostics for installed ume-harness package")
     parser.add_argument("--installed-dir", default=None, help="Installed version directory")
     parser.add_argument("--prefix", default=None, help="Installation prefix")
+    parser.add_argument("--settings-path", help="Explicit settings file to inventory (not live effective settings)")
+    parser.add_argument("--state-dir", help="Explicit state directory for read-only local policy profile validation")
     parser.add_argument("--identity-only", action="store_true", help="Verify only explicit release bytes")
     parser.add_argument(
         "--owned-install-only",
@@ -410,7 +462,7 @@ def main(argv=None) -> int:
             installed_dir = self_parent
         else:
             prefix = args.prefix or os.path.expanduser("~/.local")
-            installed_dir = os.path.join(prefix, "lib", "ume-harness", "v0.1.6")
+            installed_dir = os.path.join(prefix, "lib", "ume-harness", "v0.1.7")
 
     if args.identity_only:
         passed, detail = verify_release_identity(os.path.abspath(installed_dir))
@@ -418,7 +470,8 @@ def main(argv=None) -> int:
     if args.owned_install_only:
         passed, detail = verify_owned_install(os.path.abspath(installed_dir))
         return _print_summary([("Owned Install Closure", passed, detail)], args.json)
-    return run_diagnostics(installed_dir, prefix_dir=args.prefix, json_output=args.json)
+    return run_diagnostics(installed_dir, prefix_dir=args.prefix, json_output=args.json,
+                           settings_path=args.settings_path, state_dir=args.state_dir)
 
 
 if __name__ == "__main__":

@@ -613,15 +613,19 @@ def test_manifest_matches_explicit_release_closure():
     )
     check("generated identityがclosure内に1件だけ存在", release_payload.count(generated) == 1)
     check(
-        "MANIFEST.md のversionと実測test countがcurrent releaseに一致",
-        f"# Release Manifest (ume-harness v{version})" in manifest_text
-        and f"Measured against the v{version} release-candidate bytes" in manifest_text
+        "MANIFEST.md のversionがcurrent candidateに一致",
+        f"# Release Manifest (ume-harness v{version} candidate)" in manifest_text,
+    )
+    check(
+        "過去v0.1.6の実測test countをcurrent candidateの証拠に書き換えない",
+        "Measured against the v0.1.6 release-candidate bytes on 2026-09-05 (historical count):" in manifest_text
         and "  -> 324 passed" in manifest_text,
     )
     check(
         "配布security/support文書のversionがcurrent releaseに一致",
         f"v{version} attests the explicit protected-runtime closure" in security_text
-        and f"# Support Matrix (v{version} generated public release mirror / 2026-09-05)" in support_matrix_text,
+        and f"# Support Matrix (v{version} candidate)" in support_matrix_text
+        and "Historical baseline: v0.1.6 generated public release mirror / 2026-09-05" in support_matrix_text,
     )
 
 
@@ -631,9 +635,9 @@ def test_positioning_assets_are_public_only_and_bounded():
         package_manifest = json.load(f)
     release_payload = package_manifest["release"]["payload"]
     install_payload = package_manifest["install_payload"]
-    assert package_manifest["version"] == "0.1.6"
+    assert package_manifest["version"] == "0.1.7"
     with open(os.path.join(pkg_root, "VERSION"), encoding="utf-8") as f:
-        assert f.read().strip() == "0.1.6"
+        assert f.read().strip() == "0.1.7"
 
     for relative in POSITIONING_ASSETS:
         assert os.path.isfile(os.path.join(pkg_root, relative)), relative
@@ -853,9 +857,17 @@ def test_three_plane_public_truth():
         ("public " + chr(96) + "ume-harness" + chr(96) + "は明示closureから生成するrelease mirror") in readme,
     )
     check(
-        "README exposes public CI and current release",
+        "README exposes public CI and the previous published release",
         "https://github.com/UMEBOSHIISAN/ume-harness/actions/workflows/ci.yml/badge.svg" in readme
-        and f"https://github.com/UMEBOSHIISAN/ume-harness/releases/tag/v{version}" in readme,
+        and "https://github.com/UMEBOSHIISAN/ume-harness/releases/tag/v0.1.6" in readme
+        and "https://github.com/UMEBOSHIISAN/ume-harness/releases/tag/v0.1.6" in english,
+    )
+    check(
+        "README identifies the current candidate without claiming a published tag",
+        f"v{version}（未公開候補）" in readme
+        and f"v{version} (unpublished candidate)" in english
+        and f"https://github.com/UMEBOSHIISAN/ume-harness/releases/tag/v{version}" not in readme
+        and f"https://github.com/UMEBOSHIISAN/ume-harness/releases/tag/v{version}" not in english,
     )
     check(
         "README and NOTICE distinguish project MIT code from the OFL font",

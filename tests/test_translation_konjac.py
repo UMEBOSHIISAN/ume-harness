@@ -63,6 +63,77 @@ def test_translation_and_authority_import_boundaries_are_disjoint():
 # 1. Shell Chaining, Pipeline, and Redirection Security
 # -----------------------------------------------------------------------------
 
+@pytest.mark.parametrize("command", [
+    "python3 -c 'x = 1; print(x)'",
+    "python3 -c 'x = 1\nprint(x)'",
+    "python3 -c 'print(1 | 2)'",
+    "python3 -c 'print(2 > 1)'",
+    'python3 -c "print(1); print(2 > 1 | 0)"',
+    "python3 -c 'print(\"$(literal) `literal`\")'",
+])
+def test_quoted_python_source_is_not_shell_compound(command):
+    result = konjac.translate_bash_command(command, "/tmp")
+    assert result.concept_id == "unknown.command"
+    assert result.effect_level == konjac.EffectLevel.UNKNOWN
+    assert "複合処理" not in result.headline
+    assert "ファイルへの書き込み" not in result.explanation
+
+
+@pytest.mark.parametrize("command", [
+    "git status 2>/dev/null", "git status 2> /dev/null",
+    "git status 2>'/dev/null'",
+])
+def test_stderr_discard_is_not_arbitrary_file_write(command):
+    result = konjac.translate_bash_command(command, "/tmp")
+    assert result.effect_level == konjac.EffectLevel.READ_ONLY
+    assert "標準エラー" in result.explanation
+    assert "ファイルへの書き込み" not in result.explanation
+
+
+@pytest.mark.parametrize("command", [
+    "python3 -c 'print(1); print(2)' | mystery",
+    "python3 -c 'print(1)'\nmystery",
+    'git status "$(mystery)"', 'git status "`mystery`"',
+])
+def test_real_shell_structure_keeps_uncertainty(command):
+    result = konjac.translate_bash_command(command, "/tmp")
+    assert result.concept_id == "shell.compound"
+    assert result.effect_level == konjac.EffectLevel.UNKNOWN
+
+
+@pytest.mark.parametrize("command", [
+    "git status 2>/dev/null > status.txt",
+    "git status 2>/dev/null.log", "git status 12>/dev/null",
+    "git status 2>>errors.log",
+])
+def test_stderr_discard_does_not_hide_other_file_writes(command):
+    result = konjac.translate_bash_command(command, "/tmp")
+    assert result.effect_level == konjac.EffectLevel.LOCAL_WRITE
+    assert "ファイルへの書き込み" in result.explanation
+
+
+def test_python_stderr_discard_keeps_unknown_effects_without_execution(monkeypatch):
+    def unexpected_execution(*args, **kwargs):
+        pytest.fail("Translation must not execute the supplied Python or shell text")
+
+    monkeypatch.setattr(konjac.subprocess, "run", unexpected_execution)
+    result = konjac.translate_bash_command(
+        "python3 -c 'print(1); print(2 > 1)' 2>/dev/null", "/tmp"
+    )
+    assert result.effect_level == konjac.EffectLevel.UNKNOWN
+    assert "標準エラー" in result.explanation
+    assert "ファイルへの書き込み" not in result.explanation
+
+
+@pytest.mark.parametrize("command", [
+    r'git status \; \| \>',
+    r'git status "\$(literal) \`literal\`"',
+])
+def test_escaped_shell_markers_are_literal_arguments(command):
+    result = konjac.translate_bash_command(command, "/tmp")
+    assert result.concept_id == "git.status"
+
+
 def test_compound_command_escalates_to_destructive():
     """git status && rm -rf temp/ must NOT be translated as read-only status."""
     res = konjac.translate_bash_command("git status && rm -rf temp/", "/tmp")
@@ -183,7 +254,8 @@ def test_git_push_normal():
     res = konjac.translate_bash_command("git push origin feature-login", cwd)
     assert res.concept_id == "git.push.normal"
     assert res.effect_level == konjac.EffectLevel.EXTERNAL_TRANSMIT
-    assert "feature-login" in res.headline
+    assert "指定ブランチ" in res.headline
+    assert "feature-login" not in res.headline  # Raw arguments are metadata only.
     assert "Merge" in res.locality_badge
 
 
@@ -321,7 +393,8 @@ def test_git_push_atomic_flag_is_unknown():
 def test_git_add_all_with_pathspec():
     res = konjac.translate_bash_command("git add -A src/", "/tmp")
     assert res.concept_id == "git.add.path"
-    assert "src/" in res.headline
+    assert "指定ファイル" in res.headline
+    assert res.params["path"] == "src/"
 
 
 def test_git_commit_unknown_flag_is_unknown():
@@ -361,7 +434,7 @@ def test_hook_setup_service_e2e_and_disconnect_preserves_unrelated_settings():
             json.dump(original, f, ensure_ascii=False, indent=2)
 
         # 1. Fresh Install
-        ok, msg = hss.install_hooks_to_settings(pkg_root, settings_file)
+        ok, msg = hss.install_hooks_to_settings(pkg_root, settings_file, managed=True)
         assert ok is True
         assert os.path.exists(settings_file)
 
@@ -372,7 +445,7 @@ def test_hook_setup_service_e2e_and_disconnect_preserves_unrelated_settings():
         assert "PostToolUseFailure" in data["hooks"]
 
         # 2. Second Install (Idempotency)
-        ok2, _ = hss.install_hooks_to_settings(pkg_root, settings_file)
+        ok2, _ = hss.install_hooks_to_settings(pkg_root, settings_file, managed=True)
         assert ok2 is True
         with open(settings_file, "r") as f:
             data2 = json.load(f)

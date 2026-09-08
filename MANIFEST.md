@@ -1,4 +1,9 @@
-# Release Manifest (ume-harness v0.1.6)
+# Release Manifest (ume-harness v0.1.7 candidate)
+
+This is an unpublished v0.1.7 Technical Preview candidate based on v0.1.6.
+Candidate identity updates below support isolated lifecycle testing;
+no published v0.1.6 installation is replaced. Publication remains pending
+final candidate verification and interactive host acceptance.
 
 `ume-harness-engineering` is the sole canonical source. The public
 `ume-harness` repository is a generated release mirror and is not a supported
@@ -13,7 +18,7 @@ It has no publish, push, merge, import, or public-to-engineering operation.
 Ambient files, ignored files, untracked scratch, caches, and repository history
 do not become release bytes merely because they exist in the checkout.
 
-Release payload count: 81 files (80 canonical source files plus one generated
+Release payload count: 88 files (87 canonical source files plus one generated
 `RELEASE_IDENTITY.json`).
 
 ```
@@ -81,6 +86,13 @@ tests/acceptance_record_claude.md
 tests/case1_acceptance_v2_spec.md
 tests/case1_v2_sampling_contract.md
 tests/test_claude_code_adapter.py
+tests/test_hook_registration_diagnostics.py
+tests/test_audit_boundary_regressions.py
+tests/test_live_search_regression.py
+tests/test_presentation_safety.py
+tests/test_local_work_policy.py
+tests/test_local_workflow_smoke.py
+tests/test_pretooluse_decisions.py
 tests/test_cli.py
 tests/test_human_layer_adapter.py
 tests/test_local_execution_gate.py
@@ -125,15 +137,19 @@ Claude hooks, and the common-language pack and schema.
 
 ## Verification
 
-Measured against the v0.1.6 release-candidate bytes on 2026-09-05:
+Measured against the v0.1.6 release-candidate bytes on 2026-09-05 (historical count):
 
 ```
 python3 -m pytest -q -p no:cacheprovider tests ux/japanese-human-layer/tests
   -> 324 passed
+```
 
+Current development candidate identity for isolated tests (not a published release):
+
+```
 python3 scripts/health_check.py --installed-dir . --identity-only --json
   -> all_passed: true
-  -> root: eebd7af03bc50ee0028804c31ea09b3280ed137cda0133df33ec3731fe6ca721
+  -> root: f2738ca8e48911edf808af4925bda5b2d687422d0af6b664a1b58bcea836d886
 
 python3 scripts/health_check.py --installed-dir . --json
   -> all_passed: true

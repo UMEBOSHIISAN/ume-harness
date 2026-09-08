@@ -1,9 +1,16 @@
 # UME-HARNESS
 
-[English](README.en.md) · Technical Preview · [v0.1.6](https://github.com/UMEBOSHIISAN/ume-harness/releases/tag/v0.1.6)
+> 開発候補: 通常のローカル編集をClaude Code本体の権限へ戻す変更と、確認・禁止・
+> 評価エラーを区別する変更を含みます。この候補は未公開です。
+> 前段階の候補はローカル試用中ですが、v0.1.7最終候補の実機確認は未完了です。
+> ローカルの使用感は、個人設定を含まない公開パッケージ単独の動作保証ではありません。
+> 以下のv0.1.6実機確認は旧版の記録であり、この候補の動作保証ではありません。
+> 詳細は `adapters/claude-code/README.md` を参照してください。
 
-公開済みの機能はv0.1.6を基準に説明します。このブランチのPillow更新と説明文の修正は、
-公開済みv0.1.6のタグや配布ファイルには含まれません。
+[English](README.en.md) · Technical Preview · v0.1.7（未公開候補） · [旧版 v0.1.6](https://github.com/UMEBOSHIISAN/ume-harness/releases/tag/v0.1.6)
+
+このREADMEはv0.1.7開発候補の説明です。v0.1.6の検証結果は旧版の記録として区別します。
+統合したPillow更新と説明文の修正も、公開済みv0.1.6のタグや配布ファイルには含まれません。
 
 [![CI](https://github.com/UMEBOSHIISAN/ume-harness/actions/workflows/ci.yml/badge.svg)](https://github.com/UMEBOSHIISAN/ume-harness/actions/workflows/ci.yml)
 
@@ -48,6 +55,14 @@ UME-HARNESSは、普通の日本語で受けた依頼を、AI coding agentが作
 人間が全部を細かく操作するのでも、AIへ全部を明け渡すのでもなく、
 今回確認できる範囲、確認が必要な操作、まだ実行していないことを先に見える形にするためのローカル作業面です。
 
+## v0.1.7候補で変わること
+
+- 標準接続は、確認・失敗時の日本語説明2本です。通常の操作の権限判断はClaude Code本体に任せます。
+- 日本語説明にコマンドの引数やパスをそのまま出さず、確認・拒否・評価エラーを区別します。
+- 設定更新の競合を検出して停止し、既存インストールへの強制上書きを拒否します。
+
+厳格なLease制限は明示的な `--managed` 接続で使います。詳細と移行手順は以下に記載します。
+
 ## v0.1.6で変わったこと
 
 Claude Codeでツールを読み込み、質問に答え、作業計画を確認する一連の操作を扱えるようになりました。
@@ -66,7 +81,7 @@ Pillowを11.3.0から12.3.0へ更新しました。PillowはREADME画像を生�
 
 ## 現在の実装
 
-現在のreleaseには、役割の異なる二つのsurfaceがあります。
+この候補には、役割の異なる二つのsurfaceがあります。
 
 ### 日本語Human Layer preview CLI
 
@@ -101,7 +116,7 @@ Mothershipは人間の判断をひとつの外部操作に対する限定Authori
 現在の公開版同士に自動接続はありません。破線部分は未実装です。
 UME-HARNESSは外部のConsequential Authorityを持たず、Mothershipを自動で呼び出しません。
 
-## Preview Quick Start
+## Preview Quick Start（公開済みv0.1.6）
 
 ```bash
 git clone --branch v0.1.6 --depth 1 https://github.com/UMEBOSHIISAN/ume-harness.git
@@ -136,15 +151,18 @@ Translation Konjacは、tool eventを人間向けの日本語へ言い換えるp
 </p>
 
 この表示は権限を発行せず、External Action Authorityにもなりません。
-判断できない操作は、勝手に進めず確認へ戻します。
+標準接続では、未判定という説明から許可・拒否・追加確認を決定しません。
+確認が必要かどうかはClaude Code本体の権限設定と判断に従います。
 
 ## インストールとClaude Code接続
 
-### インストール
+### 候補版のインストール
+
+以下は検証済みのv0.1.7候補checkout内で実行する手順です。上のQuick Startは
+旧版v0.1.6を取得するため、この候補の接続・診断手順とは組み合わせないでください。
+候補は未公開で、公開配布用の取得コマンドはまだありません。
 
 ```bash
-git clone --branch v0.1.6 --depth 1 https://github.com/UMEBOSHIISAN/ume-harness.git
-cd ume-harness
 ./scripts/install.sh
 ```
 
@@ -154,11 +172,14 @@ cd ume-harness
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-v0.1.5からv0.1.6へ更新する場合は、新しいsource checkoutから旧releaseを検証して取り外し、
-その後に新releaseをインストールします。`--force`はcross-version更新には使いません。
+v0.1.6からv0.1.7候補へ更新する場合は、新しいsource checkoutから旧releaseを検証して取り外し、
+その後に新releaseをインストールします。同一版も含め、既存インストールへの
+`--force`置換は変更前に拒否します。別prefixへの新規導入は可能です。
+uninstallはUME所有hookの切断も伴います。通常setupが既存managed接続を保持する
+という説明は、uninstallを含む更新手順全体の保持を意味しません。
 
 ```bash
-./scripts/uninstall.sh --version v0.1.5 --settings-path "${HOME}/.claude/settings.json" --yes
+./scripts/uninstall.sh --version v0.1.6 --settings-path "${HOME}/.claude/settings.json" --yes
 ./scripts/install.sh
 ```
 
@@ -170,6 +191,34 @@ Package installだけでは既存のClaude Code設定を変更しません。接
 ume-harness setup --yes
 ```
 
+開発候補版の標準接続は、確認時と失敗時の日本語説明2本だけです。
+**標準接続は実行を制限する機能ではありません。** UMEのLease・path制限は強制せず、
+Claude Codeの既存権限設定も変更しません。ツールを使えることと、今回人間が依頼した
+範囲であることは別です。依頼文・運用指示は維持しますが、依頼範囲外の実装・重大操作を
+本接続だけで防止する保証はありません。managedも検査できる範囲に限られ、意図全体は保証しません。
+通常のPython・検索・外部読み取りの判断はClaude Code本体に任せ、追加の実行ゲートを登録しません。
+明示的に厳格なLease判定を使う場合だけ `ume-harness setup --managed --yes` を選びます。
+既存の厳格接続は通常setupで解除されません。説明だけへ変更するときは一度disconnectしてから通常setupします。
+外したPreToolUseを通常setupが勝手に復活させることはありません。
+
+### 旧版から「説明だけ」へ移行する
+
+旧版の3本接続を使っていた場合、インストールや通常setupだけでは実行ゲートは外れません。
+次版への更新では、**旧版を取り外す前に、旧版CLIで明示的に切断**してください。
+
+```bash
+"$HOME/.local/bin/ume-harness" setup --disconnect
+```
+
+その後、上記の旧版uninstall・新版installを行い、新版で `ume-harness setup --yes` を実行します。
+同じ版・同じprefixで接続だけ変更する場合は、disconnectの直後に通常setupします。
+custom prefixやsettings pathは全手順で一致させてください。`--managed`は付けません。
+新しいCCセッションを開き、診断の接続状態が `presentation` であることを確認します。
+これは登録ファイルの検査であり、実際のセッションが設定を再読した証明ではありません。
+
+移行が変更するのはUME所有hookだけです。他のhook、native権限、個人のRUNBOOKや
+ローカルルールは自動解除・配布しません。他のgateが残る環境で同じ挙動を保証するものではありません。
+
 切断:
 
 ```bash
@@ -179,10 +228,19 @@ ume-harness setup --disconnect
 setup/disconnectが所有するのは、setup自身が生成した3本のcanonical hook commandとの完全一致だけです。
 他event、他matcher、他hookには触れません。設定を安全に解析・再検証できなければ停止します。
 
+setup／disconnect（uninstallからの切断を含む）のUME設定更新同士は、設定の隣に置く
+固定の `.ume-harness.lock` suffixのファイルで排他します。競合時は未反映で終了し、
+自動再試行・自動マージ・古いバックアップへの自動復元はしません。
+保存前に検出した外部変更は上書きせず停止します。保存後に不一致を検出した場合は、
+反映後の確認不能として報告します。ロックファイルは置換・削除しません。
+このロックに協調しないCC・エディタ等の任意タイミングの更新まで防ぐ保証はありません。
+最後の比較と置換の間にも競合窓があるため、接続・切断中は同じ設定を別の処理で編集しないでください。
+これは短い設定更新だけの排他であり、日常のCCツール実行に制限を追加するものではありません。
+
 ### 診断・アンインストール
 
 ```bash
-python3 ~/.local/lib/ume-harness/v0.1.6/scripts/health_check.py
+python3 ~/.local/lib/ume-harness/v0.1.7/scripts/health_check.py
 # またはrepository内から
 python3 ./scripts/health_check.py
 
@@ -192,9 +250,33 @@ python3 ./scripts/health_check.py
 custom settings pathやprefixを使った場合は、setupとdisconnect/uninstallで同じ値を指定してください。
 uninstallはowned hooksとpayloadを検証し、無関係なClaude設定と `~/.ume-harness/state` を保持します。
 
+### 診断と表示の範囲
+
+診断の `connected_mode` は指定した設定ファイルの登録状態です。
+`session_hook_recognition`（対象CCでの認識）と `actual_hook_event`（実際の発火）は
+別々に未確認と表示します。対象セッションのhook設定と実際の確認・失敗イベントで
+確かめてください。反映されない場合は再起動します。他の設定元はこの検査の範囲外です。
+
+説明は対象イベントが発火した場合だけ届きます。全操作・全エラーの日本語化ではなく、
+非対話・バックグラウンド実行や、実行前の拒否などでは届かない場合があります。
+UMEの `--managed` はCCの組織管理設定とは無関係です。組織側の
+`allowManagedHooksOnly` 等によってユーザーhookが読み込まれない場合もあります。
+
+新規の説明hookにはCC標準のtimeout機構を使い、UMEの既定値として3秒を指定します。自動再試行はしません。
+既存エントリのtimeout（未指定も含む）は変更せず、標準値と異なる場合は結果に明示します。
+既存接続を3秒へ揃える場合は、対象を確認してdisconnect→通常setupしてください。
+これは組織設定やユーザー独自hookの解除ではありません。
+利用者PCで調整した公開対象外のStopルール・native権限はパッケージに移植しません。
+
+仕様参照: [Claude Code hooks](https://code.claude.com/docs/en/hooks)、
+[設定](https://code.claude.com/docs/en/settings)。
+
 ## 現在の制約
 
 - UME-HARNESSはOS sandboxではありません。trusted host entrypointを前提にします。
+- 標準接続ではUMEのLease/path制限を強制しません。Claude Code本体の権限設定を保持します。
+- `--managed`は保守的な追加制限です。ネットワーク・任意Python・未知toolの一般実行を保証しません。
+- 厳格モードでは複数hardlinkのある対象を拒否します。path検査は競合更新に対するOS隔離ではありません。
 - standalone Human Layer CLIはpreview/reportのみで、ローカル作業を実行しません。
 - Claude adapterのapproval-required operationを再開するconfirmation token経路は未接続です。
 - expected-state、concurrent、out-of-band mutation検知primitiveはありますが、Claude host lifecycleには未接続です。

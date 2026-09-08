@@ -306,10 +306,54 @@ def _parse_single_command_tokens(tokens: List[str], raw_segment: str, cwd: str) 
     return ConceptMatch("unknown.command", EffectLevel.UNKNOWN, raw_segment, False, {"cmd_preview": cmd_preview, "cmd_full": raw_segment})
 
 
+def _shell_surface(cmd: str) -> Tuple[str, bool]:
+    """Mask literal characters while preserving offsets; never evaluate shell text.
+
+    This bounded display scanner is not a shell parser or an authority check.
+    Substitutions remain uncertain even inside double quotes.
+    """
+    surface = list(cmd)
+    quote = None
+    substitution = False
+    i = 0
+    while i < len(cmd):
+        char = cmd[i]
+        if quote == "'":
+            surface[i] = " "
+            if char == "'":
+                quote = None
+        elif char == "\\" and (quote is None or (
+            i + 1 < len(cmd) and cmd[i + 1] in '$`"\\\n'
+        )):
+            surface[i] = " "
+            if i + 1 < len(cmd):
+                i += 1
+                surface[i] = " "
+        elif char == "`" or cmd.startswith("$(", i):
+            substitution = True
+            if quote:
+                surface[i] = " "
+        elif quote == '"':
+            surface[i] = " "
+            if char == '"':
+                quote = None
+        elif char in "\"'":
+            quote = char
+            surface[i] = " "
+        i += 1
+    return "".join(surface), substitution
+
+
 def _split_into_command_segments(cmd: str) -> List[str]:
-    """Split compound command string into individual segment strings."""
-    segments = re.split(r"(?:&&|\|\||;|\n)+", cmd)
-    return [s.strip() for s in segments if s.strip()]
+    """Split only shell-visible separators, keeping original quoted arguments."""
+    surface, _ = _shell_surface(cmd)
+    segments = []
+    start = 0
+    for separator in re.finditer(r"(?:&&|\|\||[;\n|])+", surface):
+        segments.append(cmd[start:separator.start()].strip())
+        start = separator.end()
+    segments.append(cmd[start:].strip())
+    return [segment for segment in segments if segment]
 
 
 def translate_bash_command(cmd: str, cwd: str) -> TranslationResult:
@@ -319,13 +363,18 @@ def translate_bash_command(cmd: str, cwd: str) -> TranslationResult:
         return render_concept(ConceptMatch("unknown.command", EffectLevel.UNKNOWN, "", False, {"cmd_preview": "", "cmd_full": ""}))
 
     # Check for command substitutions $(...) or `...`
-    has_subshell = bool(re.search(r"\$\(.*\)|\`.*\`", trimmed))
+    surface, has_subshell = _shell_surface(trimmed)
+
+    # Here-documents (and here-strings) contain opaque program/data text.
+    # Never classify their body lines as independent shell operations.
+    if "<<" in surface:
+        return render_concept(ConceptMatch("unknown.command", EffectLevel.UNKNOWN, trimmed, False))
 
     # Split into independent statements
     segments = _split_into_command_segments(trimmed)
 
     # Single segment processing
-    if len(segments) == 1 and not has_subshell and "|" not in trimmed and ">" not in trimmed:
+    if len(segments) == 1 and not has_subshell and "|" not in surface and ">" not in surface:
         try:
             tokens = shlex.split(segments[0])
             match = _parse_single_command_tokens(tokens, segments[0], cwd)
@@ -335,10 +384,27 @@ def translate_bash_command(cmd: str, cwd: str) -> TranslationResult:
 
     # Compound or pipeline or redirection analysis
     evaluated_matches: List[ConceptMatch] = []
-    has_redirection = bool(re.search(r"(?:^|[^<])>(?:[^>]|$)|>>", trimmed))
+    redirections = list(re.finditer(r">+", surface))
+    has_redirection = bool(redirections)
+    stderr_discard = False
+    has_file_write = False
+    for redirect in redirections:
+        prefix = surface[:redirect.start()]
+        lexer = shlex.shlex(trimmed[redirect.end():], posix=True, punctuation_chars=True)
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        try:
+            target = next(lexer, "")
+        except ValueError:
+            target = ""
+        if (re.search(r"(?:^|[\s;|&])2$", prefix)
+                and redirect.group() == ">" and target == "/dev/null"):
+            stderr_discard = True
+        else:
+            has_file_write = True
 
     for seg in segments:
-        pipe_parts = seg.split("|")
+        pipe_parts = [seg]
         for part in pipe_parts:
             part_trimmed = part.strip()
             if not part_trimmed:
@@ -356,7 +422,7 @@ def translate_bash_command(cmd: str, cwd: str) -> TranslationResult:
         return render_concept(ConceptMatch("unknown.command", EffectLevel.UNKNOWN, trimmed, False, {"cmd_preview": trimmed[:40], "cmd_full": trimmed}))
 
     max_effect = max((m.effect_level for m in evaluated_matches), key=lambda e: _EFFECT_SEVERITY[e])
-    if has_redirection and _EFFECT_SEVERITY[max_effect] < _EFFECT_SEVERITY[EffectLevel.LOCAL_WRITE]:
+    if has_file_write and _EFFECT_SEVERITY[max_effect] < _EFFECT_SEVERITY[EffectLevel.LOCAL_WRITE]:
         max_effect = EffectLevel.LOCAL_WRITE
 
     if has_subshell and _EFFECT_SEVERITY[max_effect] < _EFFECT_SEVERITY[EffectLevel.UNKNOWN]:
@@ -367,17 +433,18 @@ def translate_bash_command(cmd: str, cwd: str) -> TranslationResult:
 
     seg_summaries = []
     for m in evaluated_matches:
-        title = pack.JA_CONCEPT_PACK.get(m.concept_id, {}).get("headline", m.raw_event)
-        try:
-            title = title.format(**m.params)
-        except Exception:
-            pass
-        seg_summaries.append(f"・{title}")
+        title = render_concept(m).headline
+        if title not in seg_summaries:
+            seg_summaries.append(title)
+    if len(seg_summaries) > 3:
+        seg_summaries = seg_summaries[:3] + ["ほかの処理を含みます（詳細はClaude Code画面で確認）"]
     
-    if has_redirection:
+    if has_file_write:
         seg_summaries.append("・ファイルへの書き込み（リダイレクト >）")
+    if stderr_discard:
+        seg_summaries.append("・標準エラー出力を破棄（2>/dev/null）")
 
-    summary_text = "\n".join(seg_summaries)
+    summary_text = " / ".join(seg_summaries)
     compound_match = ConceptMatch(
         "shell.compound",
         max_effect,
@@ -431,17 +498,33 @@ def translate_tool_event(tool_name: str, tool_input: Dict[str, Any], cwd: str) -
 
 
 def render_concept(match: ConceptMatch) -> TranslationResult:
-    """Render a ConceptMatch into a TranslationResult using the Language Pack."""
+    """Render concepts without echoing raw arguments, paths, queries or messages.
+
+    Raw metadata is retained for callers, but is never a display parameter.
+    This deliberately avoids trying to recognize every possible credential.
+    """
     tmpl = pack.JA_CONCEPT_PACK.get(match.concept_id, pack.JA_CONCEPT_PACK.get("unknown.command", {}))
     
     headline = tmpl.get("headline", "")
     badge = tmpl.get("badge", "")
     explanation = tmpl.get("explanation", "")
 
+    display_params = {
+        "path": "指定ファイル", "target": "指定対象", "query": "指定条件",
+        "branch": "指定ブランチ", "service": "PC外のGit保管先", "msg_note": "",
+        "tool_name": "未登録のツール",
+        "max_impact": match.effect_level.value,
+    }
+    if match.concept_id == "unknown.command":
+        headline = "内容を展開しないコマンド・プログラムの実行です"
+        explanation = "影響範囲は未判定です。プログラム本文や引数は再掲しません。"
+    if match.concept_id == "shell.compound":
+        display_params["segments_summary"] = match.params.get("segments_summary", "複数の処理")
+
     try:
-        headline = headline.format(**match.params)
-        badge = badge.format(**match.params)
-        explanation = explanation.format(**match.params)
+        headline = headline.format(**display_params)
+        badge = badge.format(**display_params)
+        explanation = explanation.format(**display_params)
     except Exception:
         pass
 
@@ -457,16 +540,24 @@ def render_concept(match: ConceptMatch) -> TranslationResult:
     )
 
 
+def _display_line(text: str, limit: int) -> str:
+    """Flatten trusted explanation text and bound its display size."""
+    flattened = " ".join(text.split())
+    return flattened if len(flattened) <= limit else flattened[:limit - 1] + "…"
+
+
 def format_user_banner(res: TranslationResult, permission_context: bool = False) -> str:
     """Format the translation into a non-intrusive, natural Japanese explanation block."""
     if permission_context or res.effect_level in (EffectLevel.EXTERNAL_TRANSMIT, EffectLevel.DESTRUCTIVE, EffectLevel.UNKNOWN):
         lines = [
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-            f"🇯🇵 {res.headline}",
-            f"   {res.locality_badge}",
-            f"   詳細: {res.explanation}",
+            f"🇯🇵 {_display_line(res.headline, 180)}",
+            f"   {_display_line(res.locality_badge, 140)}",
+            f"   詳細: {_display_line(res.explanation, 400)}",
+            "   操作の詳細と権限確認はClaude Code本体の画面を参照してください。",
+            "   この解説は許可・拒否を決定しません。",
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
         ]
         return "\n".join(lines) + "\n"
     
-    return f"  ↳ 🇯🇵 {res.headline} ({res.locality_badge})\n"
+    return f"  ↳ 🇯🇵 {_display_line(res.headline, 180)} ({_display_line(res.locality_badge, 140)})\n"

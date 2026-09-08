@@ -39,20 +39,25 @@ def main() -> int:
         is_interrupt = bool(data.get("is_interrupt", False))
         
         # Native CC PostToolUseFailure schema embeds "Exit code N" in error string
-        m = re.search(r"Exit code (\d+)", error_msg)
+        m = re.search(r"Exit code ([0-9]{1,3})(?![0-9])", error_msg)
         exit_code = m.group(1) if m else "UNKNOWN"
 
         if is_interrupt:
             tmpl = pack.JA_CONCEPT_PACK.get("error.interrupted", {})
             headline = tmpl.get("headline", "🛑 処理が途中で中断されました")
             badge = tmpl.get("badge", "⏹️ 中断 / 処理未完了")
-            explanation = tmpl.get("explanation", "処理が途中で停止しました。")
         else:
             tmpl = pack.JA_CONCEPT_PACK.get("error.command_failed", {})
             headline = tmpl.get("headline", "🔴 コマンドの実行が途中で失敗しました（終了コード: {exit_code}）").format(exit_code=exit_code)
             badge = tmpl.get("badge", "⚠️ 処理未完了 / 変更状態を確認してください")
-            detail = error_msg.strip()[:140] + ("..." if len(error_msg.strip()) > 140 else "") if error_msg else "詳細エラーなし"
-            explanation = tmpl.get("explanation", "").format(error_detail=detail)
+
+        # Error bodies may contain command text, credentials or customer data.
+        # Omit them wholesale; even truncation or pattern redaction can leak.
+        explanation = (
+            "処理は完了していません。一部の変更が発生したかは、この表示だけでは判断できません。\n"
+            "   現在のファイルの変更状態を確認してください。\n"
+            "   エラー本文は再掲しません。詳細はClaude Code本体のエラー表示を確認してください。"
+        )
 
         banner = (
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -65,7 +70,7 @@ def main() -> int:
         # Fail-visible translation fallback
         banner = (
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            "🇯🇵 ⚠️ エラー解説の生成に失敗しました（技術エラー表示をご確認ください）\n"
+            "🇯🇵 ⚠️ エラー解説の生成に失敗しました（Claude Code本体のエラー表示をご確認ください）\n"
             "   ❓ 解説生成失敗 / 影響: 未判定\n"
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         )
