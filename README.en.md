@@ -2,7 +2,9 @@
 
 [日本語](README.md) · Technical Preview · [v0.1.6](https://github.com/UMEBOSHIISAN/ume-harness/releases/tag/v0.1.6)
 
-This main-branch README includes unreleased public-surface and onboarding follow-up to the historical v0.1.6 release. The published v0.1.6 distribution bytes are not rewritten.
+Released functionality below refers to v0.1.6. This branch also contains a Pillow
+build-dependency update and documentation corrections; those changes are not
+part of the published v0.1.6 tag or distribution.
 
 [![CI](https://github.com/UMEBOSHIISAN/ume-harness/actions/workflows/ci.yml/badge.svg)](https://github.com/UMEBOSHIISAN/ume-harness/actions/workflows/ci.yml)
 
@@ -47,6 +49,25 @@ It is a local-work plane for making visible what may proceed without
 confirmation, what needs confirmation, and what has not run yet—without
 requiring a person to micromanage everything or hand over all control.
 
+## What changed in v0.1.6
+
+The Claude Code adapter now handles the flow of loading tool definitions, asking
+a question, and reviewing a work plan.
+
+- `ToolSearch` returns control to Claude Code instead of being blocked as an unknown tool. Each subsequently invoked tool still receives its own permission check.
+- Claude Code owns questions and plan approval through `AskUserQuestion` and `ExitPlanMode`. The harness does not answer or approve on your behalf.
+- An installed v0.1.6 candidate was exercised through questions, plan review, reading, writing, and failure notification. The `EnterPlanMode` interaction was observed; emission of its PreToolUse event was not established.
+
+See the [support matrix](SUPPORT_MATRIX.md) for the measured scope and features
+that are not connected to the host lifecycle.
+
+### Maintenance in this branch
+
+Pillow changes from 11.3.0 to 12.3.0. It is a development dependency for generating
+README images, not a dependency of normal installation or CLI execution. All
+eight regenerated images are byte-identical to the previous outputs. This update
+does not add work-execution or automatic-approval features.
+
 ## Current implementation
 
 The current release has two distinct surfaces.
@@ -57,9 +78,10 @@ It shows candidate actions that may proceed without confirmation, actions that
 require your confirmation, and any questions that must be answered first.
 The standalone CLI stops at preview/report and does not perform file operations.
 
-The CLI is configured to call Claude Sonnet 5. The current release cannot
-reach the raw semantic run evidence, so it does not claim model accuracy.
-An offline path accepts stored fixture output without an API call.
+The CLI calls `claude -p --model sonnet`; it does not pin an exact model version.
+The distribution does not include raw runs needed to recheck interpretation
+accuracy, so no accuracy guarantee is made. An offline path accepts stored JSON
+without an API call.
 
 ### Claude Code Host Adapter
 
@@ -88,7 +110,7 @@ UME-HARNESS holds no external consequential authority and does not automatically
 ## Preview Quick Start
 
 ```bash
-git clone https://github.com/UMEBOSHIISAN/ume-harness.git
+git clone --branch v0.1.6 --depth 1 https://github.com/UMEBOSHIISAN/ume-harness.git
 cd ume-harness
 ./scripts/install.sh
 
@@ -128,7 +150,7 @@ When an operation cannot be classified safely, the system returns it for confirm
 ### Install
 
 ```bash
-git clone https://github.com/UMEBOSHIISAN/ume-harness.git
+git clone --branch v0.1.6 --depth 1 https://github.com/UMEBOSHIISAN/ume-harness.git
 cd ume-harness
 ./scripts/install.sh
 ```
@@ -209,6 +231,11 @@ assumes a trusted canonical/generated-release checkout and is not an independent
 signature verifier.
 
 ## Technical documentation
+
+The packaged Human Layer README, contracts, and prompts describe the design.
+Their proceed/revise/cancel interaction, work execution, and post-work report
+are not an implemented end-to-end standalone CLI workflow. For implemented
+behavior, use “Current implementation” above and the [support matrix](SUPPORT_MATRIX.md).
 
 - [Human Layer (published v0.1.6 design material)](ux/japanese-human-layer/README.md)
 - [Claude Code adapter](adapters/claude-code/README.md)

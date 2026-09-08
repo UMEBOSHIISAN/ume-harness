@@ -1,5 +1,7 @@
 # Support Matrix (v0.1.6 generated public release mirror / 2026-09-05)
 
+機能の基準は2026-09-05のv0.1.6です。説明文の照合・訂正日: 2026-09-08。
+
 `supported`を単一ラベルで扱わず、Semantic Interpretation、Claude Host Adapter、
 Platformの3面に分ける。単体テスト結果をphysical host proofへ昇格させず、releaseから
 到達できないraw evidenceの数値は現行claimに使わない。
@@ -9,7 +11,7 @@ Platformの3面に分ける。単体テスト結果をphysical host proofへ昇�
 | Surface | Status | Release-reachable evidence |
 |---|---|---|
 | Deterministic Core（Tier / SideEffect / Clarification / Lease primitives） | **tested** | `tests/test_portable_core.py`, `tests/test_human_layer_adapter.py`, Lease/Gate test群 |
-| Claude Sonnet 5 intent interpretation | **configured / current release-grade semantic result unknown** | `bin/ume-harness`は`claude -p --model sonnet`を呼ぶ。測定契約は`tests/case1_v2_sampling_contract.md` |
+| Claude CLI `sonnet` alias intent interpretation | **configured / current release-grade semantic result unknown** | `bin/ume-harness`は`claude -p --model sonnet`を呼ぶ（exact model versionは固定しない）。測定契約は`tests/case1_v2_sampling_contract.md` |
 | Gemma 4:12b-it-qat | **unsupported in v0** | CLI経路なし。恒久support claimを裏付けるcurrent raw evidenceなし |
 | その他のモデル | **untested** | — |
 
@@ -17,6 +19,14 @@ Platformの3面に分ける。単体テスト結果をphysical host proofへ昇�
 現行release closureに存在しない。また、配布中の`tests/case1_v2_sampling_contract.md`が
 記録する36.7% / 30.0%の旧runと、従来表の0/30 / 28/30は一致していなかった。
 そのため0/30・28/30を現行releaseの再現可能なsupport evidenceとしては掲示しない。
+
+## Human Layer design versus implemented CLI
+
+`ux/japanese-human-layer/README.md`、contracts、promptsは配布時の設計資料です。
+その「3択」「作業完了時の結果報告」を実行可能なCLI機能として扱わないでください。
+`bin/ume-harness`は依頼の解釈と決定論的な内容整理を表示し、そこで終了します。
+回答を集めて作業を開始するループ、ファイル操作、作業完了の検証は実装していません。
+fixturesの自己整合性テストは、モデル精度や作業の実行成功を証明しません。
 
 ## Claude Code Host Adapter
 

@@ -96,9 +96,9 @@ keyword一致は、「読み込む」（動詞の連用形）が`_READ_ONLY_KEYW
 （名詞形）と厳密文字列一致しないため`UNKNOWN`に分類され、fail-closedで
 `APPROVAL_REQUIRED`になる。これは**Case1 v2 Sampling Contractの対象外**
 （Authority Overlayは2026-08-19以前から凍結対象・本Package Assemblyでも変更禁止）
-であり、実際に危険側（過剰承認要求）に倒れているため安全上の問題はないが、
-UXとしては「読み込むだけの操作」にまで承認を求める点でやや厳しい。将来の
-改善候補としてP1バックログに記録する（本v0では変更しない）。
+である。この例では許可を広げず、追加確認を要求している。これだけでシステム全体の
+安全性を証明するものではない。利用上は「読み込むだけの操作」にも確認が必要になる。
+この文書は挙動の記録であり、修正の実装や公開時期を約束するものではない。
 
 `clarification_assessments`の2件はいずれも`impact`に`"true"`を含むため
 （`mutation_target`/`requested_scope`）、`missing_information`の内容（annotation）に

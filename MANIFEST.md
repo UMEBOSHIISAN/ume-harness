@@ -100,6 +100,18 @@ ux/japanese-human-layer/prompts/result_presenter.md
 ux/japanese-human-layer/tests/test_human_layer.py
 ```
 
+## Source maintenance after v0.1.6
+
+This branch updates the README asset generator dependency from Pillow 11.3.0 to
+12.3.0 and corrects public documentation. The published v0.1.6 tag remains
+unchanged and still records Pillow 11.3.0. Pillow is not in the installed runtime
+payload. The eight regenerated Harness images match their previous bytes.
+
+The packaged Human Layer design documents are part of the frozen installed
+identity. Their design goals are not claims that the standalone CLI executes
+work or offers a proceed/revise/cancel loop; see [SUPPORT_MATRIX.md](SUPPORT_MATRIX.md)
+for the implemented behavior and evidence limits.
+
 ## Installed release identity
 
 `package_manifest.json` declares a 40-file install payload. The frozen byte
