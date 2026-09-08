@@ -165,7 +165,10 @@ def handle_setup_command(argv: list[str]) -> int:
     mode.add_argument("--preview", action="store_true", help="設定のプレビューのみ表示し、変更は行わない")
     mode.add_argument("--disconnect", action="store_true", help="ume-harness が所有する3本のフックだけを切断する")
     parser.add_argument("--settings-path", default=None, help="対象の settings.json パス（テスト用）")
+    parser.add_argument("--managed", action="store_true", help="PreToolUseによる実行制限も明示的に接続する（通常は表示用2本）")
     args = parser.parse_args(argv)
+    if args.managed and args.disconnect:
+        parser.error("--managed と --disconnect は併用できません")
 
     target_path = args.settings_path or hss.get_default_settings_path()
 
@@ -179,6 +182,14 @@ def handle_setup_command(argv: list[str]) -> int:
             return 1
 
     hook_paths = hss.get_adapter_hook_paths(_PKG_ROOT)
+    if not args.managed:
+        try:
+            inventory = hss.inspect_settings_file(target_path, _PKG_ROOT)
+        except Exception as exc:
+            print(f"❌ 設定を確認できません: {exc}", file=sys.stderr)
+            return 1
+        if not any(r["owned"] and r["event"] == "PreToolUse" for r in inventory["registrations"]):
+            hook_paths.pop("PreToolUse")
     preview_text = hss.generate_preview(target_path, hook_paths)
     print(preview_text)
 
@@ -195,10 +206,10 @@ def handle_setup_command(argv: list[str]) -> int:
             print("\nキャンセルしました。")
             return 0
 
-    ok, msg = hss.install_hooks_to_settings(_PKG_ROOT, target_path)
+    ok, msg = hss.install_hooks_to_settings(_PKG_ROOT, target_path, managed=args.managed)
     if ok:
         print(f"\n✅ {msg}")
-        print("3つの日本語解説フックを接続しました。実際の表示は各hookの発火時に確認できます。")
+        print("設定ファイルへの接続処理が完了しました。実際の発火・有効設定は新しいClaude Codeセッションで確認してください。")
         return 0
     else:
         print(f"\n❌ {msg}", file=sys.stderr)

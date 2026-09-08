@@ -2,6 +2,50 @@
 
 Claude Code と ume-harness Safety Core & Auto Translation Konjac を接続するアダプター群です。
 
+## Local-work policy development candidate
+
+通常プロジェクトの編集はClaude Code本体の権限に従います。Harnessは一般的な
+`scripts/`やコード拡張子による追加承認を要求せず、通常作業にLeaseやGit管理を
+必須にしません。既存の明示Lease制限、秘密情報・権限設定・control-plane保護は
+維持します。コード編集が可能でも任意scriptの安全性や外部操作の権限は保証しません。
+
+ホスト固有の管理ディレクトリは`<state_dir>/local_work_policy.json`で指定します。
+例（例示パスは実際の管理ディレクトリへ置換）:
+
+```json
+{"schema_version":"local_work_policy.v1","protected_roots":["/absolute/managed-automation"]}
+```
+
+未設定時はbuilt-in保護だけです。既存の個人用hookを外す前に、実際の保護対象が
+引き継がれることを確認してください。候補から稼働中の設定を自動変更しません。
+
+PreToolUseは、通常処理をhostへ戻す`defer`、標準確認を要求する`ask`、禁止の`deny`、
+評価異常の`error`を区別します。deferではforce-allowを返しません。ask/denyは
+structured JSON、errorはblocking exit 2です。以前の「承認要求もexit 2」とは異なります。
+PermissionRequestの説明は承認を代行せず、禁止を解除しません。
+
+認証付きの既存作業では、`SERVICE_ACCOUNT_JSON=/absolute/file.json python3 script.py ...`
+というパスの受渡しは、秘密情報を直接表示する操作と区別して標準確認へ戻します。
+無条件許可ではなく、スクリプトのread-only保証でもありません。直接の秘密読取、
+inlineコード、保護領域のscript、bypassモードは対象外です。
+説明表示は引用符内の`;`や`|`をshell複合処理と誤解せず、`2>/dev/null`は
+標準エラーの破棄として表示します。説明と実際のpermissionDecisionは別です。
+
+重複登録と保護profileは、明示したファイルだけを読み取り診断できます。
+インストールのbyte identity検証に成功するまでruntime診断コードは読み込みません。
+
+```bash
+python3 /path/to/install/scripts/health_check.py --installed-dir /path/to/install \
+  --settings-path /path/to/.claude/settings.json --state-dir /path/to/state --json
+```
+
+登録一覧の成功は「ファイルを解析できた」という意味です。`findings`を確認してください。
+他の設定階層・plugin・実行中hostへの反映・matcherの重なりは未確認と表示します。
+重複や旧版hookの検出で設定を自動削除せず、profile診断もstateを作成しません。
+
+以下のv0.1.6実機確認記録は旧版の証拠です。この候補のfresh interactive hostでの
+確認・拒否・通常編集の動作は別途検証が必要であり、旧版のE2E成功を継承しません。
+
 ## 提供フック一覧
 
 1. **`PreToolUse` (`pretooluse_hook.py`)**
@@ -17,7 +61,7 @@ Claude Code と ume-harness Safety Core & Auto Translation Konjac を接続す�
    - コマンドやツールの実行が失敗した際に、`systemMessage`と`additionalContext`で
      過度な安心感を与えない事実ベースの案内を返します。
 
-3本のstructured outputとPreToolUse deny（exit 2）はstatic adapter test済みです。
+v0.1.6では3本のstructured outputと旧PreToolUse block（exit 2）をstatic adapter test済みです。
 v0.1.6では、isolated install済みexact candidate bytesによるinteractive Claude UI 3-hook
 E2Eも実機確認済みです。単体テストだけをlive表示証拠へ昇格させません。Translation KonjacはPresentation-onlyで、
 失敗してもcanonical Safety Gateの評価をskipしません。
@@ -41,12 +85,16 @@ Lease stateは`test` capabilityと`test_profile`も保持しますが、profile�
 
 ## 設定方法
 
-インストール後、次のコマンドで3本のフックを接続します。既存設定は保持され、
+開発候補では次のコマンドで説明用2本だけを接続します。既存設定は保持され、
 同じコマンドを再実行しても重複しません。
 
 ```bash
 ume-harness setup --yes
 ```
+
+厳格なPreToolUseは `ume-harness setup --managed --yes` で明示的に追加します。
+`settings.json.fragment`は厳格接続のサンプルであり、標準setupの設定ではありません。
+既存の厳格接続から説明だけへ変更する場合はdisconnect後に標準setupしてください。
 
 切断は次のコマンドです。
 

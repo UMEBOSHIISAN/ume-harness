@@ -161,6 +161,7 @@ _SECRET_COMPONENTS = frozenset(
         "keys",
         "secret",
         "secrets",
+        ".secrets",
     }
 )
 _SECRET_FILENAMES = frozenset(
@@ -292,6 +293,41 @@ class ActiveLeaseStatus(str, enum.Enum):
     NO_ACTIVE = "NO_ACTIVE"
     ACTIVE = "ACTIVE"
     STATE_ERROR = "STATE_ERROR"
+    RESTRICTED = "RESTRICTED"
+
+
+@dataclass(frozen=True)
+class InvocationResult:
+    decision: str
+    reason: str
+    code: str
+
+
+def _result(decision: str, code: str, reason: str) -> InvocationResult:
+    return InvocationResult(decision, f"[ume-harness] {reason} ({code})\n", code)
+
+
+def _protected_roots(state_dir: str, install_dir: str) -> tuple[str, ...]:
+    roots = [os.path.realpath(state_dir), os.path.realpath(install_dir)]
+    profile = os.path.join(state_dir, "local_work_policy.json")
+    try:
+        os.lstat(profile)
+    except FileNotFoundError:
+        return tuple(roots)
+    data = json.loads(_read_snapshot_member(state_dir, "local_work_policy.json"))
+    if not isinstance(data, dict) or data.get("schema_version") != "local_work_policy.v1":
+        raise ValueError("invalid local work policy schema")
+    configured = data.get("protected_roots")
+    if not isinstance(configured, list):
+        raise ValueError("protected_roots must be a list")
+    for root in configured:
+        if (not isinstance(root, str) or not root or "\x00" in root
+                or not os.path.isabs(root) or os.path.normpath(root) != root
+                or os.path.realpath(root) != root
+                or (os.path.exists(root) and not os.path.isdir(root))):
+            raise ValueError("protected roots must be absolute normalized directories")
+        roots.append(root)
+    return tuple(roots)
 
 
 @dataclass(frozen=True)
@@ -440,6 +476,29 @@ def is_safe_readonly_command(cmd_str: str) -> bool:
     return False
 
 
+def _has_shell_composition(command: str) -> bool:
+    """Deny shell syntax outside literal quotes; this never proves execution safe."""
+    quote = None
+    escaped = False
+    for char in command:
+        if escaped:
+            escaped = False
+            continue
+        if char == "\\" and quote != "'":
+            escaped = True
+            continue
+        if quote:
+            if char == quote:
+                quote = None
+            elif quote == '"' and char in "$`":
+                return True
+        elif char in "\"'":
+            quote = char
+        elif char in ";&|`$><\n\r":
+            return True
+    return False
+
+
 def classify_side_effect(tool_name: str, tool_input: dict) -> tp.SideEffect:
     if tool_name in ("Glob", "Grep", "Read"):
         return tp.SideEffect.READ_ONLY
@@ -449,6 +508,27 @@ def classify_side_effect(tool_name: str, tool_input: dict) -> tp.SideEffect:
         cmd = tool_input.get("command", "")
         if not isinstance(cmd, str):
             return tp.SideEffect.UNKNOWN
+        try:
+            tokens = shlex.split(cmd)
+        except ValueError:
+            tokens = []
+        if tokens:
+            executable = os.path.basename(tokens[0])
+            if executable in {"rm", "mkfs"}:
+                return tp.SideEffect.DESTRUCTIVE
+            if executable == "find" and set(tokens[1:]) & {"-exec", "-execdir", "-ok", "-okdir", "-delete"}:
+                return tp.SideEffect.DESTRUCTIVE
+            if executable in {"curl", "wget", "ssh", "scp", "sftp"}:
+                return tp.SideEffect.EXTERNAL_MUTATION
+            if executable == "git":
+                index = 1
+                while index < len(tokens) and tokens[index].startswith("-"):
+                    option = tokens[index]
+                    index += 2 if option in {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env"} else 1
+                if index < len(tokens) and tokens[index] == "push":
+                    return tp.SideEffect.EXTERNAL_MUTATION
+                if index < len(tokens) and tokens[index] == "reset" and "--hard" in tokens[index + 1:]:
+                    return tp.SideEffect.DESTRUCTIVE
         if _DESTRUCTIVE_CMD_RE.search(cmd):
             return tp.SideEffect.DESTRUCTIVE
         if _EXTERNAL_CMD_RE.search(cmd):
@@ -483,7 +563,8 @@ def _classify_policy_path(path: str) -> tp.Tier:
         process_environment
         or any(part in _SECRET_COMPONENTS for part in parts)
         or any(
-            _SENSITIVE_FILENAME_RE.search(part) is not None
+            (_SENSITIVE_FILENAME_RE.search(part) is not None
+             and not (part == filename and suffix in {".md", ".rst"}))
             or _KEY_FILENAME_RE.search(part) is not None
             or (
                 _TOKEN_FILENAME_RE.search(part) is not None
@@ -552,9 +633,9 @@ def resolve_path_tier(
     if not os.path.isabs(expanded):
         expanded = os.path.join(base_dir or os.getcwd(), expanded)
     lexical_path = os.path.abspath(expanded)
-    real_path = os.path.realpath(lexical_path)
+    real_path = _absolute_target(expanded, base_dir or os.getcwd())
     tiers = {_classify_policy_path(lexical_path), _classify_policy_path(real_path)}
-    effective_execution_root = execution_root if execution_root is not None else base_dir
+    effective_execution_root = execution_root
     if _is_root_execution_gate_path(lexical_path, effective_execution_root) or _is_root_execution_gate_path(
         real_path, effective_execution_root
     ):
@@ -734,7 +815,7 @@ def _grep_policy_paths(
 ) -> InvocationPathResolution:
     """Resolve the visible recursive tree that Claude's default Grep may read."""
     effective_base = _absolute_target(base_path, base_dir)
-    paths = [effective_base]
+    paths = [os.path.abspath(os.path.join(base_dir, os.path.expanduser(base_path))), effective_base]
     if not os.path.isdir(effective_base):
         return InvocationPathResolution(tuple(paths))
     if glob_filter is not None and (
@@ -882,6 +963,114 @@ def _bash_read_paths(tokens: list[str], base_dir: str) -> InvocationPathResoluti
     return InvocationPathResolution(tuple(operands or (base_dir,)), complete=complete)
 
 
+def _literal_search_paths(command: str, base_dir: str) -> InvocationPathResolution | None:
+    """Model only grep on named files, optionally cd && and head/tail pipes.
+
+    No recursive search, pattern files, expansion, arbitrary filters or output
+    files. Reuse the regular path/Lease policy on every actual read operand.
+    This is recognition of a bounded read, not approval of unknown shell code.
+    """
+    if not isinstance(command, str) or any(c in command for c in "$`\n\r"):
+        return None
+    quote = None
+    escaped = False
+    surface = list(command)
+    for position, char in enumerate(command):
+        if escaped:
+            surface[position] = "x"
+            escaped = False
+            continue
+        if char == "\\" and quote != "'":
+            if quote is None:
+                return None
+            surface[position] = "x"
+            escaped = True
+        elif quote:
+            surface[position] = "x"
+            if char == quote:
+                quote = None
+        elif char in "\"'":
+            surface[position] = "x"
+            quote = char
+        elif char in "*?[]{}~()":
+            return None
+    if quote or escaped:
+        return None
+    surface = "".join(surface)
+    # Keep quote and adjacency evidence until shell operators are separated.
+    # A spaced/quoted 2 is a grep operand, not descriptor 2.
+    for match in reversed(list(re.finditer(r"(?<!\S)2>/dev/null(?=\s*(?:\||$))", surface))):
+        padding = " " * (match.end() - match.start())
+        command = command[:match.start()] + padding + command[match.end():]
+        surface = surface[:match.start()] + padding + surface[match.end():]
+    if any(char in surface.replace("&&", "") for char in ";&<>"):
+        return None
+    separators = list(re.finditer(r"&&|\|", surface))
+    segments = []
+    start = 0
+    try:
+        for separator in separators:
+            segments.append(shlex.split(command[start:separator.start()]))
+            start = separator.end()
+        segments.append(shlex.split(command[start:]))
+    except ValueError:
+        return None
+    paths = [base_dir]
+    if segments and segments[0] and segments[0][0] == "cd":
+        if (len(segments[0]) != 2 or segments[0][1].startswith("-")
+                or ".." in Path(segments[0][1]).parts
+                or not (os.path.isabs(segments[0][1]) or segments[0][1] == "."
+                        or segments[0][1].startswith("./"))
+                or not separators or separators[0].group() != "&&"):
+            return None
+        # A bare relative cd may use inherited CDPATH. Do not claim its cwd.
+        paths.append(os.path.abspath(os.path.join(base_dir, segments[0][1])))
+        base_dir = _absolute_target(segments[0][1], base_dir)
+        paths.append(base_dir)
+        segments = segments[1:]
+        separators = separators[1:]
+    if any(separator.group() != "|" for separator in separators):
+        return None
+    for index, segment in enumerate(segments):
+        if not segment or any(t in {";", "&", "&&", "||", "<", ">", ">>", "<<", "<>"} for t in segment):
+            return None
+        executable = segment[0]
+        name = os.path.basename(executable)
+        if executable not in {name, "/usr/bin/" + name, "/bin/" + name}:
+            return None
+        if index == 0:
+            if name != "grep":
+                return None
+            cursor = 1
+            while cursor < len(segment) and segment[cursor].startswith("-"):
+                option = segment[cursor]
+                cursor += 1
+                if option == "--":
+                    break
+                if re.fullmatch(r"-[nEFivclLqwxohH]+", option) is None:
+                    return None
+            # One literal pattern followed by at least one named input file.
+            operands = segment[cursor + 1:]
+            if cursor >= len(segment) or not operands:
+                return None
+            for operand in operands:
+                if operand.startswith("-"):
+                    return None
+                target = _absolute_target(operand, base_dir)
+                if os.path.isdir(target):
+                    return None
+                # Keep the named alias as well as the physical destination:
+                # resolving .env -> ordinary.txt must not erase protection.
+                paths.extend((os.path.abspath(os.path.join(base_dir, operand)), target))
+        elif name not in {"head", "tail"} or not (
+            len(segment) == 1
+            or (len(segment) == 2 and re.fullmatch(r"-[0-9]+", segment[1]))
+            or (len(segment) == 3 and segment[1] == "-n" and segment[2].isdigit())
+        ):
+            return None
+    return InvocationPathResolution(tuple(paths))
+
+
 def _invocation_paths(tool_name: str, tool_input: dict, base_dir: str) -> InvocationPathResolution:
     if tool_name in ("Read", "Edit", "Write"):
         target = tool_input.get("file_path") or tool_input.get("filePath")
@@ -910,6 +1099,9 @@ def _invocation_paths(tool_name: str, tool_input: dict, base_dir: str) -> Invoca
         return InvocationPathResolution(())
 
     command = tool_input.get("command", "")
+    search = _literal_search_paths(command, base_dir)
+    if search is not None:
+        return search
     if not isinstance(command, str) or not is_safe_readonly_command(command):
         return InvocationPathResolution(())
     try:
@@ -928,6 +1120,8 @@ def invocation_policy(
     execution_root: str | None = None,
 ) -> tuple[tp.SideEffect, tuple[tp.Tier, ...], tp.Decision]:
     side_effect = classify_side_effect(tool_name, tool_input)
+    if tool_name == "Bash" and _literal_search_paths(tool_input.get("command", ""), base_dir) is not None:
+        side_effect = tp.SideEffect.READ_ONLY
     resolution = _invocation_paths(tool_name, tool_input, base_dir)
     tiers = tuple(
         resolve_path_tier(path, base_dir, execution_root) for path in resolution.paths
@@ -955,6 +1149,11 @@ def get_active_lease_context(
     if state_store is None:
         return ActiveLeaseLookup(ActiveLeaseStatus.NO_ACTIVE)
     try:
+        try:
+            os.lstat(state_store.state_path)
+        except FileNotFoundError:
+            # Ordinary work must not need a writable state directory or lock.
+            return ActiveLeaseLookup(ActiveLeaseStatus.NO_ACTIVE)
         with state_store._locked_document() as doc:
             now = state_store._now()
             state_store._expire_due(doc, now)
@@ -963,6 +1162,14 @@ def get_active_lease_context(
                 for raw in doc.get("leases", [])
                 if raw.get("lifecycle") == lels.LeaseLifecycle.ACTIVE.value
             )
+            lookup_paths = tuple(_absolute_target(path, base_dir or os.getcwd())
+                                 for path in target_paths) + (os.path.realpath(invocation_cwd or base_dir or os.getcwd()),)
+            for raw in doc.get("leases", []):
+                root = os.path.realpath(raw["worktree_realpath"])
+                if (root not in active_worktrees
+                        and any(_is_path_inside(path, root) for path in lookup_paths)):
+                    return ActiveLeaseLookup(ActiveLeaseStatus.RESTRICTED,
+                                             worktree_realpath=root)
     except Exception as exc:
         return ActiveLeaseLookup(ActiveLeaseStatus.STATE_ERROR, error=str(exc))
     if not active_worktrees:
@@ -980,11 +1187,11 @@ def get_active_lease_context(
         if isinstance(path, str) and path
     )
     if invocation_cwd:
-        real_cwd = os.path.realpath(os.path.abspath(os.path.expanduser(invocation_cwd)))
+        real_cwd = _absolute_target(invocation_cwd, lookup_base)
         cwd_matches = tuple(
             worktree
             for worktree in active_worktrees
-            if leg._is_path_inside(real_cwd, worktree)
+            if _is_path_inside(real_cwd, worktree)
         )
         if len(cwd_matches) != 1:
             return ActiveLeaseLookup(
@@ -996,7 +1203,7 @@ def get_active_lease_context(
             target_matches = tuple(
                 worktree
                 for worktree in active_worktrees
-                if all(leg._is_path_inside(path, worktree) for path in normalized_targets)
+                if all(_is_path_inside(path, worktree) for path in normalized_targets)
             )
             if len(target_matches) > 1 or (
                 len(target_matches) == 1 and target_matches[0] != cwd_match
@@ -1014,7 +1221,7 @@ def get_active_lease_context(
         target_matches = tuple(
             worktree
             for worktree in active_worktrees
-            if all(leg._is_path_inside(path, worktree) for path in normalized_targets)
+            if all(_is_path_inside(path, worktree) for path in normalized_targets)
         )
         if len(target_matches) == 1:
             return ActiveLeaseLookup(
@@ -1033,10 +1240,12 @@ def default_domain_resolver(real_path: str) -> leg.ManagedExecutionDomain | None
     curr = real_path if os.path.isdir(real_path) else os.path.dirname(real_path)
     while curr and curr != "/":
         desc = os.path.join(curr, ".ume-harness", "domain.json")
-        if os.path.exists(desc):
+        if os.path.lexists(desc):
             try:
                 with open(desc, "r", encoding="utf-8") as f:
                     d = json.load(f)
+                if not isinstance(d, dict) or d.get("management_mode", "lease") != "lease":
+                    raise ValueError("invalid managed domain descriptor")
                 return leg.ManagedExecutionDomain(
                     repository=d.get("repository", os.path.basename(curr)),
                     worktree_realpath=os.path.realpath(d.get("worktree_realpath", curr)),
@@ -1044,8 +1253,8 @@ def default_domain_resolver(real_path: str) -> leg.ManagedExecutionDomain | None
                     policy_id=d.get("policy_id", "ume-harness-site-policy-v0"),
                     policy_sha256=d.get("policy_sha256", ""),
                 )
-            except Exception:
-                return None
+            except Exception as exc:
+                raise ValueError("managed domain descriptor cannot be trusted") from exc
         parent = os.path.dirname(curr)
         if parent == curr:
             break
@@ -1057,7 +1266,22 @@ def _absolute_target(path: str, base_dir: str) -> str:
     expanded = os.path.expanduser(path)
     if not os.path.isabs(expanded):
         expanded = os.path.join(base_dir, expanded)
-    return os.path.realpath(os.path.abspath(expanded))
+    # Missing new files are ordinary; existing broken/looping aliases are not.
+    # Inspect components before normalization so '..' cannot erase an alias.
+    current = os.path.sep
+    for component in Path(expanded).parts[1:]:
+        current = os.path.join(current, component)
+        if os.path.islink(current):
+            os.stat(current)
+    return os.path.realpath(expanded)
+
+
+def _is_path_inside(path: str, root: str) -> bool:
+    """Component containment; '..notes' is an ordinary child name."""
+    try:
+        return os.path.commonpath((path, root)) == root
+    except ValueError:
+        return False
 
 
 def _canonical_file_target(
@@ -1078,7 +1302,10 @@ def _canonical_file_target(
         value = tool_input.get(key)
         if not isinstance(value, str) or not value.strip():
             return None, f"{key} must be a non-empty string"
-        targets.append(_absolute_target(value, base_dir))
+        try:
+            targets.append(_absolute_target(value, base_dir))
+        except OSError:
+            return None, "target contains an unresolved symlink"
     if not targets:
         return None, "target path must be a non-empty string"
     if len(set(targets)) != 1:
@@ -1099,25 +1326,27 @@ def check_read_scope_escape(
             return "read target expansion could not be proven inside the active lease worktree"
         for target in resolution.paths:
             real_target = _absolute_target(target, base_dir)
-            if not leg._is_path_inside(real_target, active_worktree):
+            if not _is_path_inside(real_target, active_worktree):
                 return f"read target path escapes active lease worktree boundary ({active_worktree})"
     return None
 
 
-def evaluate_invocation(
+def evaluate_invocation_result(
     data: dict,
     gate: leg.LocalExecutionGate | None = None,
     install_dir: str | None = None,
     state_dir: str | None = None,
-) -> tuple[int, str | None]:
+) -> InvocationResult:
     if not isinstance(data, dict):
-        return 2, "[ume-harness Lease Gate] hook input must be an object (INVALID_HOOK_INPUT)\n"
+        return InvocationResult("error", "[ume-harness Lease Gate] hook input must be an object (INVALID_HOOK_INPUT)\n", "INVALID_HOOK_INPUT")
     if "tool_name" not in data:
-        return 2, "[ume-harness Lease Gate] tool_name is required (INVALID_HOOK_INPUT)\n"
+        return InvocationResult("error", "[ume-harness Lease Gate] tool_name is required (INVALID_HOOK_INPUT)\n", "INVALID_HOOK_INPUT")
     tool_name = data.get("tool_name")
     tool_input = data.get("tool_input", {})
     if not isinstance(tool_name, str) or not tool_name.strip() or not isinstance(tool_input, dict):
-        return 2, "[ume-harness Lease Gate] malformed tool invocation (INVALID_HOOK_INPUT)\n"
+        return InvocationResult("error", "[ume-harness Lease Gate] malformed tool invocation (INVALID_HOOK_INPUT)\n", "INVALID_HOOK_INPUT")
+    if tool_name == "Bash" and (not isinstance(tool_input.get("command"), str) or not tool_input["command"].strip()):
+        return _result("error", "INVALID_COMMAND", "command must be a non-empty string")
     path_like_values = (
         data.get("cwd"),
         tool_input.get("file_path"),
@@ -1129,34 +1358,34 @@ def evaluate_invocation(
         tool_input.get("command"),
     )
     if any(isinstance(value, str) and "\x00" in value for value in path_like_values):
-        return 2, "[ume-harness Lease Gate] path-like input contains NUL (INVALID_TARGET_PATH)\n"
+        return InvocationResult("error", "[ume-harness Lease Gate] path-like input contains NUL (INVALID_TARGET_PATH)\n", "INVALID_TARGET_PATH")
     invocation_cwd = data.get("cwd") if isinstance(data.get("cwd"), str) and data.get("cwd") else None
     base_dir = os.path.realpath(invocation_cwd or os.getcwd())
     file_path: str | None = None
     if tool_name == "Read":
         file_path, target_error = _canonical_file_target(tool_name, tool_input, base_dir)
         if target_error is not None:
-            return 2, f"[ume-harness Lease Gate] {target_error} (INVALID_TARGET_PATH)\n"
+            return InvocationResult("error", f"[ume-harness Lease Gate] {target_error} (INVALID_TARGET_PATH)\n", "INVALID_TARGET_PATH")
     if tool_name in ("Edit", "Write", "NotebookEdit"):
         file_path, target_error = _canonical_file_target(tool_name, tool_input, base_dir)
         if target_error is not None:
-            return 2, f"[ume-harness Lease Gate] {target_error} (INVALID_TARGET_PATH)\n"
+            return InvocationResult("error", f"[ume-harness Lease Gate] {target_error} (INVALID_TARGET_PATH)\n", "INVALID_TARGET_PATH")
     if tool_name in ("Glob", "Grep") and "path" in tool_input:
         search_path = tool_input.get("path")
         if not isinstance(search_path, str) or not search_path.strip():
-            return 2, "[ume-harness Lease Gate] search path must be a non-empty string (INVALID_TARGET_PATH)\n"
+            return InvocationResult("error", "[ume-harness Lease Gate] search path must be a non-empty string (INVALID_TARGET_PATH)\n", "INVALID_TARGET_PATH")
     if tool_name == "Glob":
         pattern = tool_input.get("pattern")
         if not isinstance(pattern, str) or not pattern:
-            return 2, "[ume-harness Lease Gate] Glob pattern must be a non-empty string (INVALID_TARGET_PATH)\n"
+            return InvocationResult("error", "[ume-harness Lease Gate] Glob pattern must be a non-empty string (INVALID_TARGET_PATH)\n", "INVALID_TARGET_PATH")
     if tool_name == "Grep":
         pattern = tool_input.get("pattern")
         if not isinstance(pattern, str) or not pattern:
-            return 2, "[ume-harness Lease Gate] Grep pattern must be a non-empty string (INVALID_TARGET_PATH)\n"
+            return InvocationResult("error", "[ume-harness Lease Gate] Grep pattern must be a non-empty string (INVALID_TARGET_PATH)\n", "INVALID_TARGET_PATH")
         if "glob" in tool_input:
             glob_filter = tool_input.get("glob")
             if not isinstance(glob_filter, str) or not glob_filter:
-                return 2, "[ume-harness Lease Gate] Grep glob must be a non-empty string (INVALID_TARGET_PATH)\n"
+                return InvocationResult("error", "[ume-harness Lease Gate] Grep glob must be a non-empty string (INVALID_TARGET_PATH)\n", "INVALID_TARGET_PATH")
 
     state_dir = state_dir or os.environ.get("UME_HARNESS_STATE_DIR") or os.path.expanduser("~/.ume-harness/state")
     install_dir = install_dir or os.environ.get("UME_HARNESS_INSTALL_DIR") or _PKG_ROOT
@@ -1170,13 +1399,13 @@ def evaluate_invocation(
             # activation helper until the installed closure has been verified.
             activation_header = _read_activation_header(activation_file)
             if activation_header is None:
-                return 2, "[ume-harness Lease Gate] activation state is missing or invalid (ACTIVATION_ERROR)\n"
+                return InvocationResult("error", "[ume-harness Lease Gate] activation state is missing or invalid (ACTIVATION_ERROR)\n", "ACTIVATION_ERROR")
             expected_root = activation_header["runtime_root_digest"]
             if not os.path.isdir(install_dir):
-                return 2, "[ume-harness Lease Gate] installed runtime is missing (ACTIVATION_TAMPER)\n"
+                return InvocationResult("error", "[ume-harness Lease Gate] installed runtime is missing (ACTIVATION_TAMPER)\n", "ACTIVATION_TAMPER")
             attested_snapshot, actual_root, err = _read_closure_snapshot(install_dir)
             if err or actual_root != expected_root or attested_snapshot is None:
-                return 2, f"[ume-harness Lease Gate] runtime tamper or digest mismatch detected (ACTIVATION_TAMPER)\n"
+                return InvocationResult("error", f"[ume-harness Lease Gate] runtime tamper or digest mismatch detected (ACTIVATION_TAMPER)\n", "ACTIVATION_TAMPER")
 
             # The byte identity is now proven, so load the canonical schema
             # parser from that same attested install tree.  Do not resolve it
@@ -1185,13 +1414,13 @@ def evaluate_invocation(
 
             act = activation.read_activation_state(activation_file)
             if act is None:
-                return 2, "[ume-harness Lease Gate] activation state is missing or invalid (ACTIVATION_ERROR)\n"
+                return InvocationResult("error", "[ume-harness Lease Gate] activation state is missing or invalid (ACTIVATION_ERROR)\n", "ACTIVATION_ERROR")
             if act["runtime_root_digest"] != expected_root:
-                return 2, "[ume-harness Lease Gate] activation state changed during verification (ACTIVATION_TAMPER)\n"
+                return InvocationResult("error", "[ume-harness Lease Gate] activation state changed during verification (ACTIVATION_TAMPER)\n", "ACTIVATION_TAMPER")
             if act["mode"] == "disabled":
-                return 2, "[ume-harness Lease Gate] lease gate is disabled by administrator (DISABLED_BY_ADMIN)\n"
+                return InvocationResult("deny", "[ume-harness Lease Gate] lease gate is disabled by administrator (DISABLED_BY_ADMIN)\n", "DISABLED_BY_ADMIN")
         except Exception as e:
-            return 2, f"[ume-harness Lease Gate] activation error: {e} (ACTIVATION_ERROR)\n"
+            return InvocationResult("error", f"[ume-harness Lease Gate] activation error: {e} (ACTIVATION_ERROR)\n", "ACTIVATION_ERROR")
 
     try:
         # No protected runtime module may execute before the activation-bound
@@ -1199,23 +1428,29 @@ def evaluate_invocation(
         # behavior and loads the same modules here before evaluation.
         _load_runtime_modules(attested_snapshot, install_dir)
     except Exception as exc:
-        return 2, f"[ume-harness Lease Gate] protected runtime unavailable: {exc} (RUNTIME_IMPORT_ERROR)\n"
+        return InvocationResult("error", f"[ume-harness Lease Gate] protected runtime unavailable: {exc} (RUNTIME_IMPORT_ERROR)\n", "RUNTIME_IMPORT_ERROR")
+
+    try:
+        protected_roots = _protected_roots(state_dir, install_dir)
+    except Exception as exc:
+        return _result("error", "LOCAL_WORK_POLICY_ERROR", str(exc))
 
     # Claude owns these exact host-control tools.  Closure attestation and
     # activation checks above still run; only the generic local side-effect
     # policy is skipped, without synthesizing a host decision or user answer.
     if tool_name in _HOST_INTERACTION_TOOLS:
-        return 0, None
+        return _result("defer", "HOST_DEFER", "host permissions apply")
 
     # ToolSearch is Claude's host-owned deferred-tool schema loader.  Loading a
     # capability does not authorize the later invocation of that tool; the
     # resulting tool call returns through this same wildcard PreToolUse hook.
     if tool_name in _HOST_CAPABILITY_DISCOVERY_TOOLS:
-        return 0, None
+        return _result("defer", "HOST_DEFER", "host permissions apply")
 
     if gate is None:
         try:
             gate = leg.create_default_gate(
+                state_path=os.path.join(state_dir, lels.STATE_FILENAME),
                 domain_resolver=default_domain_resolver,
                 # invocation_policy() below is the adapter's canonical host
                 # policy decision.  The explicit bridge keeps Core's default
@@ -1246,7 +1481,9 @@ def evaluate_invocation(
         "Write",
         "NotebookEdit",
     ):
-        return 2, "[ume-harness Lease Gate] lease state store cannot be trusted (STATE_STORE_ERROR)\n"
+        return InvocationResult("error", "[ume-harness Lease Gate] lease state store cannot be trusted (STATE_STORE_ERROR)\n", "STATE_STORE_ERROR")
+    if lease_lookup.status == ActiveLeaseStatus.RESTRICTED:
+        return _result("deny", "NO_ACTIVE_LEASE", "prior restricted Lease is no longer active")
     active_worktree = lease_lookup.worktree_realpath if lease_lookup.status == ActiveLeaseStatus.ACTIVE else None
     side_effect, tiers, policy_decision = invocation_policy(
         tool_name,
@@ -1254,6 +1491,130 @@ def evaluate_invocation(
         base_dir,
         execution_root=active_worktree,
     )
+
+    policy_paths = provisional_resolution.paths
+    if tool_name == "Bash" and side_effect == tp.SideEffect.UNKNOWN:
+        command = tool_input.get("command", "")
+        if "$(" in command or "`" in command:
+            return _result("deny", "UNRESOLVED_SHELL_COMPOSITION", "command substitution requires explicit authority")
+        try:
+            lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|<>\n")
+            lexer.whitespace_split = True
+            lexer.whitespace = " \t\r"
+            lexer.commenters = ""
+            tokens = list(lexer)
+        except ValueError:
+            return _result("error", "INVALID_COMMAND", "command quoting is malformed")
+        # Conservative explicit-consequence screen across compound segments.
+        # This is not a shell interpreter or proof of safety: unresolved work
+        # still reaches native ask only after domain/Lease/path checks below.
+        segments = [[]]
+        for token in tokens:
+            if token and all(char in ";&|\n" for char in token):
+                segments.append([])
+            else:
+                segments[-1].append(token)
+        cwd_candidates = {base_dir}
+        compound_paths = []
+        compound_lease_paths = []
+        for segment in segments:
+            original_segment = tuple(segment)
+            while segment and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", segment[0]):
+                segment = segment[1:]
+            if segment and (segment[0] in {"<", ">", ">>", "<<", "<>"}
+                            or (segment[0].isdigit() and len(segment) > 1 and segment[1] in {"<", ">", ">>", "<<", "<>"})):
+                return _result("deny", "UNRESOLVED_SHELL_COMPOSITION", "leading redirection obscures the command")
+            if segment and classify_side_effect("Bash", {"command": shlex.join(segment)}) in (
+                tp.SideEffect.DESTRUCTIVE, tp.SideEffect.EXTERNAL_MUTATION, tp.SideEffect.AUTHORITY_TOUCH
+            ):
+                return _result("deny", "CONSEQUENTIAL_AUTHORITY_REQUIRED", "explicit consequential command requires separate authority")
+            if segment and segment[0] == "cd":
+                if len(segment) != 2 or segment[1].startswith("-") or any(c in segment[1] for c in "$*?[]{}"):
+                    return _result("deny", "UNRESOLVED_SHELL_CWD", "directory change cannot be resolved")
+                if not (os.path.isabs(segment[1]) or segment[1] == "." or segment[1].startswith("./")):
+                    return _result("deny", "UNRESOLVED_SHELL_CWD", "directory change may depend on inherited CDPATH")
+                # Consider both successful and failed/conditional cd; never
+                # assume a branch executed. Bound expansion rather than guess.
+                changed = {_absolute_target(segment[1], cwd) for cwd in cwd_candidates}
+                cwd_candidates |= changed
+                if len(cwd_candidates) > 16:
+                    return _result("deny", "UNRESOLVED_SHELL_CWD", "too many directory-change outcomes")
+                compound_paths.extend(changed)
+            for cwd in cwd_candidates:
+                for token in original_segment:
+                    if "=" in token and token.split("=", 1)[1]:
+                        embedded = _absolute_target(token.split("=", 1)[1], cwd)
+                        compound_lease_paths.append(embedded)
+                        if not token.startswith("SERVICE_ACCOUNT_JSON="):
+                            compound_paths.append(embedded)
+                compound_paths.extend(_absolute_target(token, cwd) for token in segment
+                                      if token and not token.startswith("-") and token not in {"<", ">", ">>", "<<", "<>"})
+        # This is only a deny screen, never evidence that arbitrary code is safe.
+        # A credential-file binding is not a request to display its contents.
+        # This narrow script form still requires native confirmation below; it
+        # does not attest the script's behavior or grant external authority.
+        credential_script = (
+            len(tokens) >= 3
+            and len(segments) == 1
+            and tokens[0].startswith("SERVICE_ACCOUNT_JSON=/")
+            and re.fullmatch(r"python(?:3(?:\.[0-9]+)?)?", os.path.basename(tokens[1])) is not None
+            and not tokens[2].startswith("-") and tokens[2].endswith(".py")
+            and not any(char in tokens[0] for char in "*?[]{}~")
+        )
+        if credential_script and data.get("permission_mode") == "bypassPermissions":
+            return _result("deny", "CONFIRMATION_UNAVAILABLE", "credential-backed execution requires native confirmation, not bypass mode")
+        screened_tokens = tokens[1:] if credential_script else tokens
+        policy_paths += tuple(token for token in screened_tokens if token and not token.startswith("-"))
+        policy_paths += tuple(compound_paths)
+        embedded_paths = tuple(token.split("=", 1)[1] for token in tokens
+                               if "=" in token and token.split("=", 1)[1])
+        policy_paths += tuple(token.split("=", 1)[1] for token in screened_tokens
+                              if "=" in token and token.split("=", 1)[1])
+        # Unknown shell operands are discovered after provisional resolution.
+        # They must participate in the same Lease check before native ask.
+        if gate is not None:
+            lease_lookup = get_active_lease_context(
+                gate._state_store, target_paths=policy_paths + embedded_paths + tuple(compound_lease_paths), base_dir=base_dir,
+                invocation_cwd=invocation_cwd)
+            if lease_lookup.status == ActiveLeaseStatus.STATE_ERROR:
+                return _result("error", "STATE_STORE_ERROR", "lease state store cannot be trusted")
+            if lease_lookup.status == ActiveLeaseStatus.RESTRICTED:
+                return _result("deny", "NO_ACTIVE_LEASE", "prior restricted Lease is no longer active")
+            active_worktree = lease_lookup.worktree_realpath if lease_lookup.status == ActiveLeaseStatus.ACTIVE else None
+            side_effect, tiers, policy_decision = invocation_policy(
+                tool_name, tool_input, base_dir, execution_root=active_worktree)
+    for path in policy_paths:
+        lexical = os.path.abspath(os.path.join(base_dir, os.path.expanduser(path)))
+        if any(_is_path_inside(candidate, root)
+               for root in protected_roots
+               for candidate in (lexical, _absolute_target(path, base_dir))):
+            if side_effect != tp.SideEffect.READ_ONLY:
+                return _result("deny", "PROTECTED_ZONE_VIOLATION", "target is protected local control plane")
+        if tool_name == "Bash" and side_effect == tp.SideEffect.UNKNOWN and resolve_path_tier(path, base_dir) in (
+            tp.Tier.TIER_SECRETS, tp.Tier.TIER_GOVERNANCE, tp.Tier.TIER_CONSTITUTION
+        ):
+            return _result("deny", "PROTECTED_TARGET", "command references a protected target")
+
+    try:
+        domains = tuple(default_domain_resolver(_absolute_target(path, base_dir))
+                        for path in policy_paths + (base_dir,))
+    except Exception as exc:
+        return _result("error", "DOMAIN_RESOLVER_ERROR", str(exc))
+    if active_worktree is None and any(domain is not None for domain in domains):
+        return _result("deny", "NO_ACTIVE_LEASE", "managed domain requires an active Lease")
+
+    # Path containment cannot establish provenance for multiply-linked files.
+    # This managed-mode check is not an OS sandbox or a race-free inode guard.
+    if active_worktree is not None:
+        for path in policy_paths:
+            try:
+                info = os.stat(_absolute_target(path, base_dir))
+            except FileNotFoundError:
+                continue
+            except OSError:
+                return _result("error", "TARGET_STAT_ERROR", "cannot verify managed target metadata")
+            if stat.S_ISREG(info.st_mode) and info.st_nlink > 1:
+                return _result("deny", "UNVERIFIABLE_FILE_ALIAS", "managed target has multiple hard links")
 
     # 2. Read scope escape check under active lease
     if active_worktree is not None and tool_name in ("Read", "Glob", "Grep", "Bash"):
@@ -1264,41 +1625,48 @@ def evaluate_invocation(
             base_dir,
         )
         if escape_reason is not None:
-            return 2, f"[ume-harness Lease Gate] {escape_reason} (SCOPE_ESCAPE)\n"
+            return InvocationResult("deny", f"[ume-harness Lease Gate] {escape_reason} (SCOPE_ESCAPE)\n", "SCOPE_ESCAPE")
 
-    # 3. Gate evaluation for Edit/Write/NotebookEdit
+    # Explicit Lease and managed-domain constraints precede ordinary host defer.
     if tool_name in ("Edit", "Write", "NotebookEdit") and gate is not None:
         action = leg.GateAction.WRITE if tool_name == "Write" else leg.GateAction.EDIT
         gate_res = gate.evaluate_request(file_path, action)
-        if gate_res.decision == leg.GateDecision.ALLOW:
-            if policy_decision == tp.Decision.DENY:
-                return 2, (
-                    f"[ume-harness] このツール呼び出し（{tool_name}）は "
-                    f"{side_effect.value} / {tiers[0].value} として許可されていません。\n"
-                )
-            if policy_decision == tp.Decision.ALLOW:
-                return 0, None
-            if all(tier == tp.Tier.TIER_RUNTIME_CODE for tier in tiers):
-                return 0, None
         if gate_res.decision == leg.GateDecision.DENY:
-            return 2, f"[ume-harness Lease Gate] {gate_res.reason} ({gate_res.violation_code})\n"
-        if gate_res.decision == leg.GateDecision.NOT_APPLICABLE:
-            if active_worktree is not None:
-                return 2, f"[ume-harness Lease Gate] target path escapes active lease worktree boundary ({active_worktree}) (SCOPE_ESCAPE)\n"
+            code = gate_res.violation_code or "LEASE_DENIED"
+            decision = "error" if code in {"STATE_STORE_ERROR", "DOMAIN_RESOLVER_ERROR", "POLICY_EVALUATION_ERROR"} else "deny"
+            return _result(decision, code, gate_res.reason)
+        if gate_res.decision == leg.GateDecision.NOT_APPLICABLE and active_worktree is not None:
+            return _result("deny", "SCOPE_ESCAPE", "active Lease requires a matching managed domain")
 
     if policy_decision == tp.Decision.DENY:
-        return 2, (
-            f"[ume-harness] このツール呼び出し（{tool_name}）は "
-            f"{side_effect.value} / {tiers[0].value} として許可されていません。\n"
-        )
-
+        return _result("deny", "POLICY_DENIED", f"{tool_name}: {side_effect.value} / {tiers[0].value}")
+    if side_effect in (tp.SideEffect.DESTRUCTIVE, tp.SideEffect.EXTERNAL_MUTATION, tp.SideEffect.AUTHORITY_TOUCH):
+        return _result("deny", "CONSEQUENTIAL_AUTHORITY_REQUIRED", "external or consequential authority is not provided by local confirmation")
+    if side_effect != tp.SideEffect.READ_ONLY and any(
+        tier in (tp.Tier.TIER_GOVERNANCE, tp.Tier.TIER_CONSTITUTION, tp.Tier.TIER_SECRETS)
+        for tier in tiers
+    ):
+        return _result("deny", "PROTECTED_TARGET", "protected target requires its explicit authority")
+    if tool_name in ("Edit", "Write", "NotebookEdit"):
+        return _result("defer", "HOST_DEFER", "ordinary local edit uses host permissions")
     if policy_decision == tp.Decision.ALLOW:
-        return 0, None
+        return _result("defer", "HOST_DEFER", "host permissions apply")
+    if tool_name == "Bash" and active_worktree is None:
+        if data.get("permission_mode") == "bypassPermissions":
+            return _result("deny", "CONFIRMATION_UNAVAILABLE", "unresolved execution requires native confirmation, not bypass mode")
+        return _result("ask", "LOCAL_EXECUTION_CONFIRMATION", "opaque local command requires host confirmation")
+    return _result("deny", "UNRESOLVED_OPERATION", "operation cannot be proven within its execution constraints")
 
-    return 2, (
-        f"[ume-harness] このツール呼び出し（{tool_name}）は "
-        f"{side_effect.value} / {tiers[0].value} に分類され、承認が必要です。\n"
-    )
+
+def evaluate_invocation(
+    data: dict,
+    gate: leg.LocalExecutionGate | None = None,
+    install_dir: str | None = None,
+    state_dir: str | None = None,
+) -> tuple[int, str | None]:
+    """Compatibility only: typed decisions are the single evaluation result."""
+    result = evaluate_invocation_result(data, gate, install_dir, state_dir)
+    return (0, None) if result.decision == "defer" else (2, result.reason)
 
 
 def evaluate_host_path(
@@ -1308,16 +1676,14 @@ def evaluate_host_path(
     state_dir: str | None = None,
     worktrees_root: str | None = None,
 ) -> int:
-    """CLI evaluation wrapper for single host path (backwards compatibility)."""
+    """Report the typed policy verdict without claiming host authorization."""
     tool_name = "Write" if action == "write" else "Edit"
-    code, err = evaluate_invocation(
+    result = evaluate_invocation_result(
         {"tool_name": tool_name, "tool_input": {"file_path": target_path}},
         install_dir=install_dir,
         state_dir=state_dir,
     )
-    if code == 0:
-        return _emit("ALLOW", "execution allowed under active lease")
-    return _emit("DENY", err.strip() if err else "execution denied", "DENIED")
+    return _emit(result.decision.upper(), result.reason.strip(), result.code)
 
 
 def main() -> int:

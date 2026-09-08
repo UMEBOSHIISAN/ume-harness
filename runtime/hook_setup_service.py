@@ -8,6 +8,9 @@ the supplied package root. It never claims artifacts by substring or filename.
 from __future__ import annotations
 
 import argparse
+import errno
+import fcntl
+from functools import wraps
 import json
 import os
 import re
@@ -21,6 +24,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 
 OWNERSHIP_PROTOCOL_VERSION = "ume-harness-ownership.v1"
+PRESENTATION_TIMEOUT_SECONDS = 3
 
 
 def get_default_settings_path() -> str:
@@ -82,6 +86,113 @@ def cli_wrapper_is_owned(wrapper_path: str, pkg_root: str) -> bool:
     return actual in owned_variants
 
 
+def inspect_hook_registrations(data: Dict[str, Any], pkg_root: str, *, settings_path: str) -> Dict[str, Any]:
+    """Inventory one settings object; recognition never grants removal ownership.
+
+    Only direct absolute paths, optionally preceded by python/python3, are
+    interpreted. Shell wrappers and expansions remain ambiguous.
+    """
+    if not isinstance(data, dict) or not isinstance(data.get("hooks", {}), dict):
+        raise ValueError("settings hooks must be an object")
+    owned = _owned_hook_command_variants(pkg_root)
+    paths = get_adapter_hook_paths(pkg_root)
+    settings_dir = os.path.dirname(os.path.abspath(settings_path))
+    legacy_path = (
+        os.path.join(settings_dir, "hooks", "unified_tool_classifier.py")
+        if os.path.basename(settings_dir) == ".claude" else None
+    )
+    records = []
+    for event, groups in data.get("hooks", {}).items():
+        if not isinstance(groups, list):
+            raise ValueError("hook event must be an array")
+        for gi, group in enumerate(groups):
+            if not isinstance(group, dict) or not isinstance(group.get("hooks", []), list):
+                raise ValueError("hook group must contain a hooks array")
+            for hi, hook in enumerate(group.get("hooks", [])):
+                command = hook.get("command") if isinstance(hook, dict) else None
+                classification = "ambiguous"
+                is_owned = False
+                target = None
+                if isinstance(hook, dict) and hook.get("type") != "command":
+                    classification = "non_command"
+                elif isinstance(command, str):
+                    is_owned = command in owned.get(event, ())
+                    if is_owned:
+                        classification = "current"
+                        target = paths[event]
+                    else:
+                        try:
+                            tokens = _command_tokens(command)
+                        except ValueError:
+                            tokens = []
+                        if len(tokens) == 2 and tokens[0] in ("python", "python3"):
+                            tokens = tokens[1:]
+                        if len(tokens) == 1 and os.path.isabs(tokens[0]) and not any(
+                            char in tokens[0] for char in "$`*?[]{}\n"
+                        ):
+                            target = tokens[0]
+                            if target != os.path.normpath(target):
+                                classification = "ambiguous"
+                            elif event == "PreToolUse" and target == legacy_path:
+                                classification = "legacy_classifier"
+                            elif target == paths.get(event):
+                                classification = "current_unowned"
+                            elif event in paths and re.search(
+                                r"/ume-harness/v[0-9]+\.[0-9]+\.[0-9]+(?:-rc\.[0-9]+)?/adapters/claude-code/"
+                                + re.escape(os.path.basename(paths[event])) + r"$", target
+                            ):
+                                classification = "other_version_reference"
+                            else:
+                                classification = "unrelated"
+                records.append({"event": event, "matcher": group.get("matcher"),
+                                "group_index": gi, "hook_index": hi, "command": command,
+                                "classification": classification, "owned": is_owned,
+                                "target": target,
+                                "timeout": hook.get("timeout") if isinstance(hook, dict) else None})
+    pre = [r for r in records if r["event"] == "PreToolUse"]
+    current = [r for r in pre if r["classification"] in ("current", "current_unowned")]
+    findings = []
+    if len(current) > 1:
+        findings.append("duplicate_current_pretooluse")
+    if current and any(r["classification"] == "legacy_classifier" for r in pre):
+        findings.append("legacy_current_coexistence")
+    if current and any(r["classification"] == "other_version_reference" for r in pre):
+        findings.append("multiple_version_pretooluse")
+    for event in ("PermissionRequest", "PostToolUseFailure"):
+        if sum(r["event"] == event and r["classification"] in ("current", "current_unowned") for r in records) > 1:
+            findings.append("duplicate_current_" + event.lower())
+    conflicting = any(r["classification"] in (
+        "legacy_classifier", "other_version_reference", "current_unowned"
+    ) for r in records)
+    connected = {r["event"] for r in records if r["owned"]}
+    complete = {r["event"] for r in records if r["owned"] and r["matcher"] in (None, "", "*")}
+    if findings or conflicting:
+        connected_mode = "conflict"
+    elif not connected:
+        connected_mode = "disconnected"
+    elif connected == complete == set(paths):
+        connected_mode = "managed"
+    elif connected == complete == {"PermissionRequest", "PostToolUseFailure"}:
+        connected_mode = "presentation"
+    else:
+        connected_mode = "partial"
+    return {"settings_path": settings_path, "scope": "file inventory only",
+            "connected_mode": connected_mode,
+            "live_effective_settings": "unknown", "restart_status": "unknown; verify in a fresh host",
+            "session_hook_recognition": "unknown", "actual_hook_event": "unknown",
+            "matcher_overlap": "not evaluated", "profile_diagnostics": "separate health check --state-dir required",
+            "registrations": records, "findings": findings}
+
+
+def inspect_settings_file(settings_path: str, pkg_root: str) -> Dict[str, Any]:
+    data, exists = _read_settings(settings_path)
+    result = inspect_hook_registrations(data, pkg_root, settings_path=settings_path)
+    result["file_exists"] = exists
+    if not exists:
+        result["connected_mode"] = "absent"
+    return result
+
+
 def generate_preview(settings_path: str, hook_paths: Dict[str, str]) -> str:
     lines = [
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
@@ -92,46 +203,138 @@ def generate_preview(settings_path: str, hook_paths: Dict[str, str]) -> str:
         f"  {settings_path}",
         "",
         "【追加される日本語通訳フック】",
-        "  1. PreToolUse: ツール実行直前の日本語意味訳自動表示",
-        f"     -> {hook_paths.get('PreToolUse')}",
-        "  2. PermissionRequest: 手動許可プロンプト直前の詳細解説",
+        "  PermissionRequest: 手動許可プロンプト直前の詳細解説",
         f"     -> {hook_paths.get('PermissionRequest')}",
-        "  3. PostToolUseFailure: エラー発生時の事実ベースの案内",
+        "  PostToolUseFailure: エラー発生時の事実ベースの案内",
         f"     -> {hook_paths.get('PostToolUseFailure')}",
         "",
         "【安全の保証】",
         "  ✓ 変更前に既存設定のバックアップを自動作成します",
-        "  ✓ `ume-harness setup --disconnect` は上記3本だけを安全に取り外します",
+        "  ✓ `ume-harness setup --disconnect` は所有する全3種類のフックを取り外します",
         "  ✓ その他の設定・イベント・matcher・hookには触れません",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
     ]
+    if "PreToolUse" in hook_paths:
+        lines.insert(12, f"  PreToolUse: managed実行制限（明示選択または既存接続を保持） -> {hook_paths['PreToolUse']}")
+        lines.insert(13, "  managedは保守的な評価です。未知tool・shell処理等で追加確認や拒否があり、任意scriptの安全性は保証しません。")
+    else:
+        lines.insert(12, "  presentation: 表示用2本。実行制限の追加は setup --managed で明示選択します。")
     return "\n".join(lines)
 
 
-def _read_settings(settings_path: str) -> Tuple[Dict[str, Any], bool]:
+def _connection_summary(data: Dict[str, Any], pkg_root: str, settings_path: str) -> str:
+    """Describe registered state, never claim a live session's enforcement."""
+    report = inspect_hook_registrations(data, pkg_root, settings_path=settings_path)
+    mode = report["connected_mode"]
+    lines = [f"登録結果: {mode}（この設定ファイルのみ）"]
+    if mode == "presentation":
+        lines.append("説明のみ: UMEの追加実行制限・Lease・path制限を強制しません。")
+    elif mode == "managed":
+        lines.append("厳格接続です。説明だけには移行していません。移行は --disconnect 後に通常setupしてください。")
+    else:
+        lines.append("接続範囲は未確認です。登録診断を確認し、所有不明のhookは管理者に確認してください。")
+    lines.append("Claude Codeの権限設定は変更しません。nativeの許可は今回の依頼範囲の承認ではありません。")
+    lines.append("依頼範囲外の実装・重大操作の防止を、本接続だけで保証しません。")
+    lines.append("CCセッションでの設定認識・実イベントの発火は未確認です。")
+    if any(r["owned"] and r["event"] in ("PermissionRequest", "PostToolUseFailure")
+           and r["timeout"] != PRESENTATION_TIMEOUT_SECONDS for r in report["registrations"]):
+        lines.append("既存timeout設定を維持しました。説明hookの短い時間上限は未確認です。変更は対象を確認して再接続してください。")
+    if any(r["classification"] == "ambiguous" for r in report["registrations"]):
+        lines.append("所有不明のラッパー等は変更していません。その動作は未確認です。")
+    return "\n".join(lines)
+
+
+def _settings_revision(settings_path: str):
+    """Capture exact bytes and metadata; missing is a distinct revision."""
     try:
-        path_mode = os.lstat(settings_path).st_mode
+        fd = os.open(settings_path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     except FileNotFoundError:
-        return {}, False
-    if stat.S_ISLNK(path_mode):
-        raise ValueError("settings.json symlinks are unsupported because ownership cannot be preserved safely")
-    if not stat.S_ISREG(path_mode):
-        raise ValueError("settings.json must be a regular file")
-    with open(settings_path, "r", encoding="utf-8") as f:
-        content = f.read().strip()
+        return None
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            raise ValueError("settings.json symlinks are unsupported") from exc
+        raise
+    with os.fdopen(fd, "rb") as f:
+        before = os.fstat(f.fileno())
+        if not stat.S_ISREG(before.st_mode):
+            raise ValueError("settings.json must be a regular file")
+        content = f.read()
+        after = os.fstat(f.fileno())
+    fields = lambda s: (s.st_dev, s.st_ino, s.st_mode, s.st_uid, s.st_gid,
+                        s.st_size, s.st_mtime_ns, s.st_ctime_ns)
+    if fields(before) != fields(after) or fields(after) != fields(os.lstat(settings_path)):
+        raise SettingsConflictError("settings changed during read")
+    return content, fields(after)
+
+
+def _read_settings_snapshot(settings_path: str):
+    revision = _settings_revision(settings_path)
+    if revision is None:
+        return {}, False, revision
+    content = revision[0].decode("utf-8").strip()
     if not content:
-        return {}, True
+        return {}, True, revision
     data = json.loads(content)
     if not isinstance(data, dict):
         raise ValueError("settings.json のルートは JSON object である必要があります。")
-    return data, True
+    return data, True, revision
+
+
+def _read_settings(settings_path: str) -> Tuple[Dict[str, Any], bool]:
+    data, existed, _ = _read_settings_snapshot(settings_path)
+    return data, existed
+
+
+class SettingsConflictError(OSError):
+    """An external update was detected before replacement."""
+
+
+class SettingsPostCommitConflictError(OSError):
+    """Replacement happened, but its expected result could not be verified."""
+
+
+def _settings_writer(operation):
+    """One persistent sidecar inode for UME writers, never renamed or unlinked.
+
+    Non-cooperating applications remain outside this advisory lock. No retries.
+    Canonicalize the parent, not the final component (settings symlinks fail).
+    """
+    @wraps(operation)
+    def locked(pkg_root, settings_path=None, *args, **kwargs):
+        path = os.path.abspath(settings_path or get_default_settings_path())
+        path = os.path.join(os.path.realpath(os.path.dirname(path)), os.path.basename(path))
+        fd = None
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            lock_path = path + ".ume-harness.lock"
+            fd = os.open(lock_path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+            info = os.fstat(fd)
+            if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+                raise ValueError("unsupported settings lock")
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            current = os.lstat(lock_path)
+            if (current.st_dev, current.st_ino) != (info.st_dev, info.st_ino):
+                raise ValueError("settings lock changed")
+        except (OSError, ValueError):
+            if fd is not None:
+                os.close(fd)
+            return False, "設定更新の競合またはロック取得失敗：未反映です。別の設定更新がないことを確認してください。"
+        try:
+            return operation(pkg_root, path, *args, **kwargs)
+        finally:
+            os.close(fd)
+    return locked
 
 
 class SettingsCommitDurabilityError(OSError):
     """The settings replacement committed but directory durability was unproven."""
 
 
-def _atomic_write_settings(settings_path: str, data: Dict[str, Any]) -> None:
+_UNSPECIFIED_REVISION = object()
+
+
+def _atomic_write_settings(settings_path: str, data: Dict[str, Any], *,
+                           expected_revision=_UNSPECIFIED_REVISION) -> None:
     settings_dir = os.path.dirname(settings_path)
     os.makedirs(settings_dir, exist_ok=True)
 
@@ -163,8 +366,20 @@ def _atomic_write_settings(settings_path: str, data: Dict[str, Any]) -> None:
             f.write("\n")
             f.flush()
             os.fsync(f.fileno())
+        if expected_revision is not _UNSPECIFIED_REVISION:
+            if _settings_revision(settings_path) != expected_revision:
+                raise SettingsConflictError("settings changed before replacement")
+        # This comparison and replace are NOT a CAS against non-cooperating writers.
         os.replace(temp_path, settings_path)
         committed = True
+
+        try:
+            actual = _settings_revision(settings_path)
+            expected_bytes = (json.dumps(data, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+            if actual is None or actual[0] != expected_bytes:
+                raise ValueError("settings changed after replacement")
+        except Exception as exc:
+            raise SettingsPostCommitConflictError("settings replacement outcome unconfirmed") from exc
 
         # Make the rename durable as well as the file contents.  This is a
         # no-op only on platforms that cannot open directories for fsync; the
@@ -182,6 +397,8 @@ def _atomic_write_settings(settings_path: str, data: Dict[str, Any]) -> None:
             pass
         if fd >= 0:
             os.close(fd)
+        if isinstance(exc, SettingsPostCommitConflictError):
+            raise
         if committed:
             raise SettingsCommitDurabilityError(
                 "settings replacement committed but directory durability could not be confirmed"
@@ -242,7 +459,10 @@ def _remove_owned_commands(
                     and group.get("matcher") == "*"
                     and len(group_hooks) == 1
                     and isinstance(group_hooks[0], dict)
-                    and set(group_hooks[0]) == {"type", "command"}
+                    and (set(group_hooks[0]) == {"type", "command"}
+                         or (event_name in ("PermissionRequest", "PostToolUseFailure")
+                             and set(group_hooks[0]) == {"type", "command", "timeout"}
+                             and group_hooks[0]["timeout"] == PRESENTATION_TIMEOUT_SECONDS))
                     and group_hooks[0].get("type") == "command"
                     and group_hooks[0].get("command") in owned_commands
                 )
@@ -855,11 +1075,18 @@ def _event_contains_owned_command(event_name: str, event_groups: Any, owned_comm
     return False
 
 
+@_settings_writer
 def install_hooks_to_settings(
     pkg_root: str,
     settings_path: Optional[str] = None,
+    *,
+    managed: bool = False,
 ) -> Tuple[bool, str]:
-    """Idempotently and atomically merge the three canonical hooks."""
+    """Merge presentation hooks; add execution enforcement only by explicit opt-in.
+
+    Existing owned PreToolUse registrations remain untouched by default setup.
+    The settings themselves are the only record of the connection profile.
+    """
     if not settings_path:
         settings_path = get_default_settings_path()
     settings_path = os.path.abspath(settings_path)
@@ -870,18 +1097,28 @@ def install_hooks_to_settings(
             return False, f"フックファイルが見つかりません: {hpath}"
 
     try:
-        current_data, existed = _read_settings(settings_path)
+        current_data, existed, revision = _read_settings_snapshot(settings_path)
+        inventory = inspect_hook_registrations(current_data, pkg_root, settings_path=settings_path)
+        if inventory["connected_mode"] == "conflict":
+            return False, "登録状態 conflict: 設定は変更していません。登録診断で重複・旧版を確認し、所有元のCLIで明示的に切断してください。"
     except Exception as e:
         return False, f"既存の settings.json の読み込みに失敗しました: {e}"
 
     hook_commands = get_adapter_hook_commands(pkg_root)
-    legacy_commands = {
-        event_name: frozenset({hook_paths[event_name]})
-        for event_name in hook_paths
-        if hook_paths[event_name] != hook_commands[event_name]
-    }
+    if not managed:
+        hook_commands.pop("PreToolUse")
+    changed = False
     try:
-        changed = _remove_owned_commands(current_data, legacy_commands) if legacy_commands else False
+        # Quote exact legacy commands in place: matcher, timeout, metadata and
+        # adjacent third-party entries remain owned by the existing settings.
+        for record in inventory["registrations"]:
+            event = record["event"]
+            if (record["owned"] and event in hook_commands
+                    and record["command"] == hook_paths[event]
+                    and record["command"] != hook_commands[event]):
+                entry = current_data["hooks"][event][record["group_index"]]["hooks"][record["hook_index"]]
+                entry["command"] = hook_commands[event]
+                changed = True
     except Exception as e:
         return False, f"既存の settings.json の hook 構造を安全に処理できません: {e}"
 
@@ -893,16 +1130,20 @@ def install_hooks_to_settings(
             event_hooks = hooks.setdefault(event_name, [])
             if _event_contains_owned_command(event_name, event_hooks, command):
                 continue
+            entry = {"type": "command", "command": command}
+            if event_name in ("PermissionRequest", "PostToolUseFailure"):
+                entry["timeout"] = PRESENTATION_TIMEOUT_SECONDS
             event_hooks.append({
                 "matcher": "*",
-                "hooks": [{"type": "command", "command": command}],
+                "hooks": [entry],
             })
             changed = True
     except Exception as e:
         return False, f"既存の settings.json の hook 構造を安全に処理できません: {e}"
 
+    summary = _connection_summary(current_data, pkg_root, settings_path)
     if not changed:
-        return True, "接続済み（設定変更なし）"
+        return True, "接続済み（設定変更なし）\n" + summary
 
     settings_dir = os.path.dirname(settings_path)
     os.makedirs(settings_dir, exist_ok=True)
@@ -916,14 +1157,19 @@ def install_hooks_to_settings(
         backup_path = "新規作成（既存ファイルなし）"
 
     try:
-        _atomic_write_settings(settings_path, current_data)
+        _atomic_write_settings(settings_path, current_data, expected_revision=revision)
+    except SettingsConflictError:
+        return False, "設定更新の競合を検出：未反映です。現在の設定を保持し、自動再試行・復元はしていません。"
+    except SettingsPostCommitConflictError:
+        return False, "設定の反映後に確認不一致が発生しました。現在の設定は復元せず、接続状態は未確認です。"
     except SettingsCommitDurabilityError:
-        return True, f"接続完了（設定は反映済みですが、永続性の確認は保留です）\nバックアップ: {backup_path}"
+        return True, f"接続完了（設定は反映済みですが、永続性の確認は保留です）\nバックアップ: {backup_path}\n{summary}"
     except Exception as e:
         return False, f"settings.json の安全な書き込みに失敗しました: {e}"
-    return True, f"接続完了\nバックアップ: {backup_path}"
+    return True, f"接続完了\nバックアップ: {backup_path}\n{summary}"
 
 
+@_settings_writer
 def disconnect_hooks_from_settings(
     pkg_root: str,
     settings_path: Optional[str] = None,
@@ -935,20 +1181,23 @@ def disconnect_hooks_from_settings(
     settings_path = os.path.abspath(settings_path)
 
     try:
-        current_data, existed = _read_settings(settings_path)
+        current_data, existed, revision = _read_settings_snapshot(settings_path)
     except Exception as e:
         return False, f"既存の settings.json の読み込みに失敗しました: {e}"
     if not existed:
         return True, "対象設定が存在しないため、切断対象はありません。"
 
     durability_unconfirmed = False
+    replacement_applied = False
     try:
         changed = _remove_owned_commands(current_data, _owned_hook_command_variants(pkg_root))
         if changed:
             try:
-                _atomic_write_settings(settings_path, current_data)
+                _atomic_write_settings(settings_path, current_data, expected_revision=revision)
+                replacement_applied = True
             except SettingsCommitDurabilityError:
                 durability_unconfirmed = True
+                replacement_applied = True
         verified_data, _ = _read_settings(settings_path)
         if contains_owned_hooks(verified_data, pkg_root):
             return False, "所有フックが残っているため切断を完了できませんでした。"
@@ -962,7 +1211,13 @@ def disconnect_hooks_from_settings(
                 "settings.json の変更は反映済みですが永続性を確認できないため、"
                 "アンインストールを停止しました。"
             )
+    except SettingsConflictError:
+        return False, "設定更新の競合を検出：未反映です。現在の設定を保持し、自動再試行・復元はしていません。"
+    except SettingsPostCommitConflictError:
+        return False, "設定の反映後に確認不一致が発生しました。現在の設定は復元せず、切断状態は未確認です。"
     except Exception as e:
+        if replacement_applied:
+            return False, "設定の反映後に再検証できませんでした。現在の設定は復元せず、切断状態は未確認です。"
         return False, f"所有フックを安全に切断できません: {e}"
 
     if changed:

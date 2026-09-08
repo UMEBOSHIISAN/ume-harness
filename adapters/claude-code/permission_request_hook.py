@@ -2,7 +2,7 @@
 """permission_request_hook.py — Claude Code PermissionRequest Hook Adapter.
 
 Triggered immediately before Claude Code prompts the user for manual permission approval.
-Renders full, structured Japanese explanations with clear locality and risk boundaries.
+Renders bounded Japanese explanations without repeating raw tool input.
 This module renders Presentation-only context; it never grants, denies, or consumes authority.
 """
 
@@ -67,7 +67,8 @@ def main() -> int:
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             "🇯🇵 ⚠️ この操作の日本語解説を生成できませんでした\n"
             "   ❓ 解説生成失敗 / 影響: 未判定\n"
-            "   詳細: 安全のため、表示されている技術コマンドを直接ご確認ください。\n"
+            "   詳細と権限確認はClaude Code本体の画面を参照してください。\n"
+            "   この解説は許可・拒否を決定しません。\n"
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         )
 

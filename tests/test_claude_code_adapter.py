@@ -16,6 +16,7 @@ import os
 import subprocess
 import sys
 import tempfile
+from types import SimpleNamespace
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _ADAPTER_DIR = os.path.join(ROOT_DIR, "adapters", "claude-code")
@@ -57,13 +58,26 @@ def run_hook_subproc(payload: dict, env: dict | None = None) -> subprocess.Compl
     hook_env.setdefault("UME_HARNESS_STATE_DIR", "/tmp/ume_harness_test_isolated_state")
     if env:
         hook_env.update(env)
-    return subprocess.run(
-        [sys.executable, _HOOK_PATH],
-        input=json.dumps(payload),
-        capture_output=True,
-        text=True,
-        env=hook_env,
-    )
+    with tempfile.TemporaryDirectory() as project:
+        return subprocess.run(
+            [sys.executable, _HOOK_PATH],
+            input=json.dumps(payload),
+            capture_output=True,
+            text=True,
+            env=hook_env,
+            cwd=project,
+        )
+
+
+def check_host_decision(proc: subprocess.CompletedProcess, decision: str) -> str:
+    check("structured decision exits 0", proc.returncode == 0, f"stderr={proc.stderr!r}")
+    output = json.loads(proc.stdout)
+    verdict = output["hookSpecificOutput"]
+    check("canonical event", verdict["hookEventName"] == "PreToolUse")
+    check(f"host decision is {decision}", verdict["permissionDecision"] == decision, repr(verdict))
+    check("reason is nonempty", isinstance(verdict["permissionDecisionReason"], str) and bool(verdict["permissionDecisionReason"]))
+    check("structured decision has no error stderr", proc.stderr == "")
+    return verdict["permissionDecisionReason"]
 
 
 # --- 1. 既存の基本フック挙動テスト ---
@@ -73,8 +87,8 @@ def test_read_tool_allowed() -> None:
     check("exit 0", p.returncode == 0, f"got {p.returncode}")
 
 
-def test_pretooluse_allow_emits_structured_system_message() -> None:
-    print("\n[PreToolUse Presentation] Allowed tool emits user-visible structured JSON")
+def test_pretooluse_read_silently_defers() -> None:
+    print("\n[PreToolUse Presentation] Ordinary read silently defers to host permissions")
     with tempfile.TemporaryDirectory() as td:
         proc = run_hook_subproc(
             {
@@ -84,19 +98,15 @@ def test_pretooluse_allow_emits_structured_system_message() -> None:
                 "cwd": td,
                 "permission_mode": "auto",
             },
-            env={"UME_HARNESS_STATE_DIR": td},
+            env={"UME_HARNESS_STATE_DIR": os.path.join(td, "harness-state")},
         )
     check("PreToolUse allow -> exit 0", proc.returncode == 0, f"got {proc.returncode}")
-    check("PreToolUse stdout is JSON", proc.stdout.lstrip().startswith("{"), f"stdout={proc.stdout!r}")
-    output = json.loads(proc.stdout)
-    check("PreToolUse has systemMessage", "systemMessage" in output, f"output={output!r}")
-    check("PreToolUse Japanese explanation is visible", "🇯🇵" in output["systemMessage"])
-    check("PreToolUse presentation does not decide authority", "hookSpecificOutput" not in output)
+    check("PreToolUse defer emits no card or permission override", proc.stdout == "", repr(proc.stdout))
     check("PreToolUse success stderr is empty", proc.stderr == "", f"stderr={proc.stderr!r}")
 
 
-def test_pretooluse_write_uses_visible_detailed_banner() -> None:
-    print("\n[PreToolUse Presentation] Write-like tools use the detailed permission banner")
+def test_pretooluse_write_silently_defers() -> None:
+    print("\n[PreToolUse Presentation] Ordinary write silently defers to host permissions")
     with tempfile.TemporaryDirectory() as td:
         proc = run_hook_subproc(
             {
@@ -106,14 +116,11 @@ def test_pretooluse_write_uses_visible_detailed_banner() -> None:
                 "cwd": td,
                 "permission_mode": "default",
             },
-            env={"UME_HARNESS_STATE_DIR": td},
+            env={"UME_HARNESS_STATE_DIR": os.path.join(td, "harness-state")},
         )
     check("PreToolUse write -> exit 0", proc.returncode == 0, f"got {proc.returncode}")
-    output = json.loads(proc.stdout)
-    banner = output.get("systemMessage", "")
-    check("PreToolUse write banner is detailed", "詳細:" in banner, f"banner={banner!r}")
-    check("PreToolUse write banner names local mutation", "PC内のファイルを変更" in banner)
-    check("PreToolUse write presentation does not decide authority", "hookSpecificOutput" not in output)
+    check("ordinary write defers without false permission card", proc.stdout == "", repr(proc.stdout))
+    check("ordinary write has no error stderr", proc.stderr == "")
 
 
 def test_edit_tool_allowed_tier_normal_unmanaged() -> None:
@@ -133,7 +140,7 @@ def test_unmanaged_protected_paths_use_canonical_tier() -> None:
             ("runtime settings edit", {"tool_name": "Edit", "tool_input": {"file_path": settings_path}}, 2),
             ("runtime local settings edit", {"tool_name": "Edit", "tool_input": {"file_path": os.path.join(td, ".claude", "settings.local.json")}}, 2),
             ("runtime config edit", {"tool_name": "Edit", "tool_input": {"file_path": os.path.join(td, "config.toml")}}, 2),
-            ("automation edit", {"tool_name": "Edit", "tool_input": {"file_path": os.path.join(td, "scripts", "release.sh")}}, 2),
+            ("automation edit", {"tool_name": "Edit", "tool_input": {"file_path": os.path.join(td, "scripts", "release.sh")}}, 0),
             ("CI workflow edit", {"tool_name": "Edit", "tool_input": {"file_path": os.path.join(td, ".github", "workflows", "ci.yml")}}, 2),
             ("CI pipeline edit", {"tool_name": "Edit", "tool_input": {"file_path": os.path.join(td, "Jenkinsfile")}}, 2),
             ("governance policy edit", {"tool_name": "Edit", "tool_input": {"file_path": os.path.join(td, "contracts", "tool_policy.md")}}, 2),
@@ -180,7 +187,7 @@ def test_unmanaged_protected_paths_use_canonical_tier() -> None:
             ("keys directory read", {"tool_name": "Read", "tool_input": {"file_path": os.path.join(td, "keys", "api.txt")}}, 2),
             ("api key file read", {"tool_name": "Read", "tool_input": {"file_path": os.path.join(td, "api_key.json")}}, 2),
             ("private key file read", {"tool_name": "Read", "tool_input": {"file_path": os.path.join(td, "private_key")}}, 2),
-            ("notebook edit", {"tool_name": "NotebookEdit", "tool_input": {"notebook_path": os.path.join(td, "analysis.ipynb")}}, 2),
+            ("notebook edit", {"tool_name": "NotebookEdit", "tool_input": {"notebook_path": os.path.join(td, "analysis.ipynb")}}, 0),
             ("secret read", {"tool_name": "Read", "tool_input": {"file_path": secret_path}}, 2),
             ("SSH config read", {"tool_name": "Read", "tool_input": {"file_path": os.path.join(td, ".ssh", "config")}}, 2),
             ("secret glob", {"tool_name": "Glob", "tool_input": {"path": os.path.dirname(secret_path), "pattern": "*"}}, 2),
@@ -190,13 +197,13 @@ def test_unmanaged_protected_paths_use_canonical_tier() -> None:
             ("AGENTS override edit", {"tool_name": "Edit", "tool_input": {"file_path": os.path.join(td, "AGENTS.override.md")}}, 2),
             ("CLAUDE local edit", {"tool_name": "Edit", "tool_input": {"file_path": os.path.join(td, "CLAUDE.local.md")}}, 2),
             ("constitution read", {"tool_name": "Read", "tool_input": {"file_path": constitution_path}}, 0),
-            ("extensionless CLI edit", {"tool_name": "Edit", "tool_input": {"file_path": os.path.join(td, "bin", "ume-harness")}}, 2),
+            ("extensionless CLI edit", {"tool_name": "Edit", "tool_input": {"file_path": os.path.join(td, "bin", "ume-harness")}}, 0),
             ("package manifest edit", {"tool_name": "Edit", "tool_input": {"file_path": os.path.join(td, "package_manifest.json")}}, 2),
             ("autonomous stop contract edit", {"tool_name": "Edit", "tool_input": {"file_path": os.path.join(td, "contracts", "autonomous_stop.md")}}, 2),
             ("task intake contract edit", {"tool_name": "Edit", "tool_input": {"file_path": os.path.join(td, "contracts", "task_intake.md")}}, 2),
-            ("root hook executable edit", {"tool_name": "Edit", "tool_input": {"file_path": os.path.join(td, "hooks", "pre-commit")}, "cwd": td}, 2),
-            ("root automation executable edit", {"tool_name": "Edit", "tool_input": {"file_path": os.path.join(td, "scripts", "run")}, "cwd": td}, 2),
-            ("root CI executable edit", {"tool_name": "Edit", "tool_input": {"file_path": os.path.join(td, "ci", "pipeline")}, "cwd": td}, 2),
+            ("root hook executable edit", {"tool_name": "Edit", "tool_input": {"file_path": os.path.join(td, "hooks", "pre-commit")}, "cwd": td}, 0),
+            ("root automation executable edit", {"tool_name": "Edit", "tool_input": {"file_path": os.path.join(td, "scripts", "run")}, "cwd": td}, 0),
+            ("root CI executable edit", {"tool_name": "Edit", "tool_input": {"file_path": os.path.join(td, "ci", "pipeline")}, "cwd": td}, 0),
             ("normal document edit", {"tool_name": "Edit", "tool_input": {"file_path": normal_path}}, 0),
             ("secretary document is normal", {"tool_name": "Edit", "tool_input": {"file_path": os.path.join(td, "secretary_notes.md")}}, 0),
             ("ordinary scripts notes are normal", {"tool_name": "Edit", "tool_input": {"file_path": os.path.join(td, "Documents", "scripts", "notes.md")}}, 0),
@@ -208,7 +215,7 @@ def test_unmanaged_protected_paths_use_canonical_tier() -> None:
             domain_resolver=lambda _: None,
         )
         for label, invocation, expected_code in cases:
-            code, _ = hook.evaluate_invocation(invocation, gate=gate, state_dir=td)
+            code, _ = hook.evaluate_invocation(invocation, gate=gate, state_dir=os.path.join(td, "harness-state"))
             check(f"{label} -> exit {expected_code}", code == expected_code, f"got {code}")
 
 
@@ -225,7 +232,7 @@ def test_compound_secret_directories_use_secret_tier() -> None:
                 {"tool_name": "Read", "tool_input": {"file_path": target}},
                 {"tool_name": "Bash", "tool_input": {"command": f"cat {target}"}},
             ):
-                code, _ = hook.evaluate_invocation(invocation, gate=gate, state_dir=td)
+                code, _ = hook.evaluate_invocation(invocation, gate=gate, state_dir=os.path.join(td, "harness-state"))
                 check(
                     f"{invocation['tool_name']} below {directory} -> exit 2",
                     code == 2,
@@ -236,14 +243,14 @@ def test_compound_secret_directories_use_secret_tier() -> None:
 def test_destructive_bash_blocked() -> None:
     print("\n[BLOCK] rm -rf を含むBash -> exit 2")
     p = run_hook_subproc({"tool_name": "Bash", "tool_input": {"command": "rm -rf /tmp/foo"}})
-    check("exit 2", p.returncode == 2, f"got {p.returncode}")
-    check("理由がstderrに出る", "DESTRUCTIVE" in p.stderr, f"stderr={p.stderr!r}")
+    reason = check_host_decision(p, "deny")
+    check("destructive authority remains required", "CONSEQUENTIAL_AUTHORITY_REQUIRED" in reason or "DESTRUCTIVE" in reason, reason)
 
 
 def test_git_push_blocked() -> None:
     print("\n[BLOCK] git push (EXTERNAL_MUTATION) -> exit 2")
     p = run_hook_subproc({"tool_name": "Bash", "tool_input": {"command": "git push origin main"}})
-    check("exit 2", p.returncode == 2, f"got {p.returncode}")
+    check_host_decision(p, "deny")
 
 
 def test_safe_readonly_bash_allowed() -> None:
@@ -397,13 +404,13 @@ def test_cwd_sensitive_and_git_reads_fail_closed_for_protected_paths() -> None:
             {"tool_name": "Bash", "tool_input": {"command": f"cat {td}/*"}, "cwd": td},
         ]
         for invocation in cases:
-            code, _ = hook.evaluate_invocation(invocation, gate=gate, state_dir=td)
+            code, _ = hook.evaluate_invocation(invocation, gate=gate, state_dir=os.path.join(td, "harness-state"))
             check(f"{invocation['tool_name']} protected/ambiguous read -> exit 2", code == 2, f"got {code}")
 
         code, _ = hook.evaluate_invocation(
             {"tool_name": "Grep", "tool_input": {"path": normal_dir, "pattern": "note"}, "cwd": td},
             gate=gate,
-            state_dir=td,
+            state_dir=os.path.join(td, "harness-state"),
         )
         check("Grep ordinary visible tree -> exit 0", code == 0, f"got {code}")
 
@@ -603,13 +610,13 @@ def test_glob_directory_symlink_traversal_fails_closed() -> None:
 def test_unrecognized_bash_fails_closed() -> None:
     print("\n[fail-closed] 未知のBashコマンド（allowlist外）-> exit 2（承認要求）")
     p = run_hook_subproc({"tool_name": "Bash", "tool_input": {"command": "some_custom_tool --flag"}})
-    check("exit 2（安全側に倒れる）", p.returncode == 2, f"got {p.returncode}")
+    check_host_decision(p, "ask")
 
 
 def test_unrecognized_tool_fails_closed() -> None:
     print("\n[fail-closed] 未知のtool_name -> exit 2")
     p = run_hook_subproc({"tool_name": "SomeFutureTool", "tool_input": {}})
-    check("exit 2", p.returncode == 2, f"got {p.returncode}")
+    check_host_decision(p, "deny")
 
 
 def test_exact_host_interaction_tools_reach_claude_without_harness_authority() -> None:
@@ -648,14 +655,10 @@ def test_exact_host_interaction_tools_reach_claude_without_harness_authority() -
                     "tool_input": tool_input,
                     "cwd": td,
                 },
-                env={"UME_HARNESS_STATE_DIR": td},
+                env={"UME_HARNESS_STATE_DIR": os.path.join(td, "harness-state")},
             )
             check(f"{tool_name} is not blocked by Harness", proc.returncode == 0, f"stderr={proc.stderr!r}")
-            output = json.loads(proc.stdout)
-            check(f"{tool_name} emits presentation only", set(output) == {"systemMessage"}, f"output={output!r}")
-            serialized = json.dumps(output, ensure_ascii=False)
-            check(f"{tool_name} emits no synthetic updatedInput", "updatedInput" not in serialized)
-            check(f"{tool_name} emits no approval decision", "hookSpecificOutput" not in output)
+            check(f"{tool_name} silently defers without synthetic input or authority", proc.stdout == "", repr(proc.stdout))
         check("host interaction creates no Harness state", os.listdir(td) == [], f"state={os.listdir(td)!r}")
 
 
@@ -673,7 +676,7 @@ def test_exact_toolsearch_capability_discovery_reaches_claude_without_authority(
                 "tool_input": opaque_payload,
                 "cwd": td,
             },
-            state_dir=td,
+            state_dir=os.path.join(td, "harness-state"),
         )
         check("exact ToolSearch reaches Claude", code == 0, f"got {code}, err={err!r}")
         check("exact ToolSearch creates no Harness decision", err is None, f"err={err!r}")
@@ -684,7 +687,8 @@ def test_exact_toolsearch_capability_discovery_reaches_claude_without_authority(
 
         attested_root, root_error = hook.runner.compute_closure_root_digest(ROOT_DIR)
         check("candidate closure digest is available", attested_root is not None, f"err={root_error!r}")
-        activation_path = os.path.join(td, "activation.json")
+        activation_path = os.path.join(td, "harness-state", "activation.json")
+        os.makedirs(os.path.dirname(activation_path), exist_ok=True)
         with open(activation_path, "w", encoding="utf-8") as activation:
             json.dump(
                 {
@@ -705,7 +709,7 @@ def test_exact_toolsearch_capability_discovery_reaches_claude_without_authority(
                 "cwd": td,
             },
             install_dir=ROOT_DIR,
-            state_dir=td,
+            state_dir=os.path.join(td, "harness-state"),
         )
         check(
             "exact ToolSearch passes after activation attestation",
@@ -723,11 +727,7 @@ def test_exact_toolsearch_capability_discovery_reaches_claude_without_authority(
             env={"UME_HARNESS_STATE_DIR": os.path.join(td, "unactivated")},
         )
         check("ToolSearch subprocess exits 0", proc.returncode == 0, f"stderr={proc.stderr!r}")
-        output = json.loads(proc.stdout)
-        check("ToolSearch emits presentation only", set(output) == {"systemMessage"}, f"output={output!r}")
-        serialized = json.dumps(output, ensure_ascii=False)
-        for forbidden in ("permissionDecision", "updatedInput", "approval", "authority"):
-            check(f"ToolSearch emits no synthetic {forbidden}", forbidden not in serialized)
+        check("ToolSearch silently defers without synthetic input or authority", proc.stdout == "", repr(proc.stdout))
 
         malformed_code, malformed_err = hook.evaluate_invocation(
             {
@@ -736,7 +736,7 @@ def test_exact_toolsearch_capability_discovery_reaches_claude_without_authority(
                 "tool_input": None,
                 "cwd": td,
             },
-            state_dir=td,
+            state_dir=os.path.join(td, "harness-state"),
         )
         check("malformed ToolSearch envelope remains blocked", malformed_code == 2)
         check(
@@ -753,7 +753,7 @@ def test_exact_toolsearch_capability_discovery_reaches_claude_without_authority(
                     "tool_input": {},
                     "cwd": td,
                 },
-                state_dir=td,
+                state_dir=os.path.join(td, "harness-state"),
             )
             check(f"near-match {near_name!r} remains blocked", code == 2, f"got {code}, err={err!r}")
 
@@ -766,7 +766,7 @@ def test_exact_toolsearch_capability_discovery_reaches_claude_without_authority(
                     "cwd": td,
                 },
                 install_dir=ROOT_DIR,
-                state_dir=td,
+                state_dir=os.path.join(td, "harness-state"),
             )
             check(
                 f"ToolSearch does not authorize discovered {discovered_tool}",
@@ -785,12 +785,12 @@ def test_non_interaction_unknown_tools_remain_fail_closed() -> None:
                     state_path=os.path.join(td, "leases.json"),
                     domain_resolver=lambda _: None,
                 ),
-                state_dir=td,
+                state_dir=os.path.join(td, "harness-state"),
             )
             check(f"{tool_name} remains blocked", code == 2, f"got {code}")
             check(
-                f"{tool_name} remains approval-required",
-                err is not None and "承認が必要" in err,
+                f"{tool_name} remains unresolved and denied",
+                err is not None and "UNRESOLVED_OPERATION" in err,
                 f"err={err!r}",
             )
 
@@ -822,7 +822,7 @@ def test_host_interaction_payload_schema_remains_host_owned() -> None:
         for tool_name, tool_input in opaque_host_payloads:
             code, err = hook.evaluate_invocation(
                 {"tool_name": tool_name, "tool_input": tool_input},
-                state_dir=td,
+                state_dir=os.path.join(td, "harness-state"),
             )
             check(f"opaque {tool_name} payload reaches Claude", code == 0, f"got {code}, err={err!r}")
             check(f"opaque {tool_name} payload creates no Harness decision", err is None, f"err={err!r}")
@@ -845,7 +845,8 @@ def test_host_interaction_does_not_bypass_activation_verification() -> None:
         "ToolSearch": {},
     }
     with tempfile.TemporaryDirectory() as td:
-        activation_path = os.path.join(td, "activation.json")
+        activation_path = os.path.join(td, "harness-state", "activation.json")
+        os.makedirs(os.path.dirname(activation_path), exist_ok=True)
         with open(activation_path, "w", encoding="utf-8") as activation:
             json.dump(
                 {
@@ -858,7 +859,7 @@ def test_host_interaction_does_not_bypass_activation_verification() -> None:
         for tool_name in valid_inputs:
             code, err = hook.evaluate_invocation(
                 {"tool_name": tool_name, "tool_input": valid_inputs[tool_name]},
-                state_dir=td,
+                state_dir=os.path.join(td, "harness-state"),
             )
             check(f"{tool_name} with invalid activation exits 2", code == 2, f"got {code}")
             check(
@@ -881,7 +882,7 @@ def test_host_interaction_does_not_bypass_activation_verification() -> None:
             code, err = hook.evaluate_invocation(
                 {"tool_name": tool_name, "tool_input": valid_inputs[tool_name]},
                 install_dir=ROOT_DIR,
-                state_dir=td,
+                state_dir=os.path.join(td, "harness-state"),
             )
             check(f"{tool_name} with closure mismatch exits 2", code == 2, f"got {code}")
             check(
@@ -894,14 +895,14 @@ def test_host_interaction_does_not_bypass_activation_verification() -> None:
 def test_webfetch_blocked_as_external_mutation() -> None:
     print("\n[BLOCK] WebFetch (EXTERNAL_MUTATION) -> exit 2")
     p = run_hook_subproc({"tool_name": "WebFetch", "tool_input": {"url": "https://example.com"}})
-    check("exit 2", p.returncode == 2, f"got {p.returncode}")
+    check_host_decision(p, "deny")
 
 
 def test_websearch_requires_approval_as_external_mutation() -> None:
     print("\n[BLOCK] WebSearch (EXTERNAL_MUTATION) -> exit 2")
     p = run_hook_subproc({"tool_name": "WebSearch", "tool_input": {"query": "security"}})
-    check("WebSearch exit 2", p.returncode == 2, f"got {p.returncode}")
-    check("WebSearch is classified as external mutation", "EXTERNAL_MUTATION" in p.stderr, f"stderr={p.stderr!r}")
+    reason = check_host_decision(p, "deny")
+    check("WebSearch retains external authority boundary", "CONSEQUENTIAL_AUTHORITY_REQUIRED" in reason or "EXTERNAL_MUTATION" in reason, reason)
 
 
 def test_malformed_json_input_fails_closed() -> None:
@@ -918,7 +919,7 @@ def test_missing_tool_name_fails_closed_as_invalid_hook_input() -> None:
             {"tool_name": "", "tool_input": {}},
             {"tool_name": None, "tool_input": {}},
         ):
-            p = run_hook_subproc(payload, env={"UME_HARNESS_STATE_DIR": td})
+            p = run_hook_subproc(payload, env={"UME_HARNESS_STATE_DIR": os.path.join(td, "harness-state")})
             check(f"{payload!r} exits 2", p.returncode == 2, f"got {p.returncode}")
             check(
                 f"{payload!r} reports INVALID_HOOK_INPUT",
@@ -941,7 +942,7 @@ def test_malformed_tool_paths_fail_closed_without_traceback() -> None:
         for tool_name, path_key in cases:
             proc = run_hook_subproc(
                 {"tool_name": tool_name, "tool_input": {path_key: 123}},
-                env={"UME_HARNESS_STATE_DIR": td},
+                env={"UME_HARNESS_STATE_DIR": os.path.join(td, "harness-state")},
             )
             check(f"{tool_name} malformed path -> exit 2", proc.returncode == 2, f"got {proc.returncode}")
             check(
@@ -960,7 +961,7 @@ def test_malformed_tool_paths_fail_closed_without_traceback() -> None:
         for tool_name, tool_input in malformed_search_cases:
             proc = run_hook_subproc(
                 {"tool_name": tool_name, "tool_input": tool_input},
-                env={"UME_HARNESS_STATE_DIR": td},
+                env={"UME_HARNESS_STATE_DIR": os.path.join(td, "harness-state")},
             )
             check(f"{tool_name} malformed search input -> exit 2", proc.returncode == 2, f"got {proc.returncode}")
             check(
@@ -979,7 +980,7 @@ def test_malformed_tool_paths_fail_closed_without_traceback() -> None:
         for tool_name, tool_input in nul_cases:
             proc = run_hook_subproc(
                 {"tool_name": tool_name, "tool_input": tool_input},
-                env={"UME_HARNESS_STATE_DIR": td},
+                env={"UME_HARNESS_STATE_DIR": os.path.join(td, "harness-state")},
             )
             check(f"{tool_name} NUL input -> exit 2", proc.returncode == 2, f"got {proc.returncode}")
             check(
@@ -1000,7 +1001,8 @@ def test_empty_stdin_denied_fail_closed() -> None:
 def test_activation_state_without_runtime_digest_fails_closed() -> None:
     print("\n[Activation Integrity] active state without runtime digest -> exit 2")
     with tempfile.TemporaryDirectory() as td:
-        activation_path = os.path.join(td, "activation.json")
+        activation_path = os.path.join(td, "harness-state", "activation.json")
+        os.makedirs(os.path.dirname(activation_path), exist_ok=True)
         with open(activation_path, "w", encoding="utf-8") as activation:
             json.dump(
                 {
@@ -1016,7 +1018,7 @@ def test_activation_state_without_runtime_digest_fails_closed() -> None:
                 state_path=os.path.join(td, "leases.json"),
                 domain_resolver=lambda _: None,
             ),
-            state_dir=td,
+            state_dir=os.path.join(td, "harness-state"),
         )
         check("active activation without digest exits 2", code == 2, f"got {code}")
         check(
@@ -1079,7 +1081,7 @@ def test_lease_gate_managed_domain_with_active_lease_allowed() -> None:
         code, err = hook.evaluate_invocation(
             {"tool_name": "Edit", "tool_input": {"file_path": os.path.join(worktree, "code.py")}},
             gate=gate,
-            state_dir=td,
+            state_dir=os.path.join(td, "harness-state"),
         )
         check("exit 0 (ALLOW)", code == 0, f"got code={code}")
         check("err is None", err is None, f"got err={err!r}")
@@ -1124,10 +1126,10 @@ def test_test_only_lease_does_not_invent_host_command_authority() -> None:
         code, err = hook.evaluate_invocation(
             {"tool_name": "Bash", "tool_input": {"command": "pytest -q"}, "cwd": worktree},
             gate=gate,
-            state_dir=td,
+            state_dir=os.path.join(td, "harness-state"),
         )
         check("test-only Lease does not authorize arbitrary Bash", code == 2, f"got {code}")
-        check("unwired test command remains approval-required", err is not None and "承認が必要" in err)
+    check("unwired test command remains denied", err is not None and "UNRESOLVED_OPERATION" in err)
 
 
 def test_active_lease_cannot_override_constitution_or_execution_gate_tiers() -> None:
@@ -1188,11 +1190,11 @@ def test_active_lease_cannot_override_constitution_or_execution_gate_tiers() -> 
                     "cwd": worktree,
                 },
                 gate=gate,
-                state_dir=td,
+                state_dir=os.path.join(td, "harness-state"),
             )
             check(
                 f"CI control {rel} edit still requires approval",
-                code == 2 and err is not None and "TIER_GOVERNANCE" in err,
+                code == 2 and err is not None and "PROTECTED_TARGET" in err,
                 f"got code={code}, err={err!r}",
             )
 
@@ -1210,7 +1212,7 @@ def test_active_lease_cannot_override_constitution_or_execution_gate_tiers() -> 
                 "cwd": worktree,
             },
             gate=gate,
-            state_dir=td,
+            state_dir=os.path.join(td, "harness-state"),
         )
         check(
             "ordinary runtime YAML remains allowed by active edit Lease",
@@ -1246,7 +1248,7 @@ def test_active_lease_cannot_override_constitution_or_execution_gate_tiers() -> 
                     "cwd": worktree,
                 },
                 gate=gate,
-                state_dir=td,
+                state_dir=os.path.join(td, "harness-state"),
             )
 
             check(f"protected {rel} edit -> exit 2", code == 2, f"got {code}")
@@ -1259,7 +1261,7 @@ def test_active_lease_cannot_override_constitution_or_execution_gate_tiers() -> 
                 "cwd": worktree,
             },
             gate=gate,
-            state_dir=td,
+            state_dir=os.path.join(td, "harness-state"),
         )
         check("NotebookEdit filePath secret -> exit 2", code == 2, f"got {code}")
         check("NotebookEdit filePath secret has deny reason", err is not None, f"got err={err!r}")
@@ -1318,7 +1320,7 @@ def test_multiple_active_leases_select_invocation_worktree() -> None:
                 "cwd": worktree_b,
             },
             gate=gate,
-            state_dir=td,
+            state_dir=os.path.join(td, "harness-state"),
         )
         check("read in second active worktree -> exit 0", read_code == 0, f"err={read_err!r}")
 
@@ -1329,12 +1331,12 @@ def test_multiple_active_leases_select_invocation_worktree() -> None:
                 "cwd": worktree_b,
             },
             gate=gate,
-            state_dir=td,
+            state_dir=os.path.join(td, "harness-state"),
         )
         check("second worktree root scripts remain governance -> exit 2", governance_code == 2)
         check(
             "second worktree governance denial is reported",
-            governance_err is not None and "TIER_GOVERNANCE" in governance_err,
+            governance_err is not None and "PROTECTED_TARGET" in governance_err,
             f"err={governance_err!r}",
         )
 
@@ -1349,7 +1351,7 @@ def test_multiple_active_leases_select_invocation_worktree() -> None:
                     "cwd": worktree_a,
                 },
                 gate=gate,
-                state_dir=td,
+                state_dir=os.path.join(td, "harness-state"),
             )
             check(
                 f"{tool_name} cannot borrow a different worktree Lease -> exit 2",
@@ -1409,7 +1411,7 @@ def test_notebook_edit_rejects_conflicting_target_aliases() -> None:
                 "cwd": worktree,
             },
             gate=gate,
-            state_dir=td,
+            state_dir=os.path.join(td, "harness-state"),
         )
         check("conflicting NotebookEdit aliases -> exit 2", conflict_code == 2)
         check(
@@ -1428,7 +1430,7 @@ def test_notebook_edit_rejects_conflicting_target_aliases() -> None:
                 "cwd": worktree,
             },
             gate=gate,
-            state_dir=td,
+            state_dir=os.path.join(td, "harness-state"),
         )
         check(
             "equivalent NotebookEdit aliases remain allowed",
@@ -1457,7 +1459,7 @@ def test_read_rejects_conflicting_target_aliases() -> None:
                 state_path=os.path.join(td, "leases.json"),
                 domain_resolver=lambda _: None,
             ),
-            state_dir=td,
+            state_dir=os.path.join(td, "harness-state"),
         )
         check("conflicting Read aliases -> exit 2", conflict_code == 2)
         check(
@@ -1497,7 +1499,7 @@ def test_lease_gate_managed_domain_without_lease_fails_closed() -> None:
         code, err = hook.evaluate_invocation(
             {"tool_name": "Edit", "tool_input": {"file_path": os.path.join(worktree, "code.py")}},
             gate=gate,
-            state_dir=td,
+            state_dir=os.path.join(td, "harness-state"),
         )
         check("exit 2 (DENY)", code == 2, f"got code={code}")
         check("err contains NO_ACTIVE_LEASE", err is not None and "NO_ACTIVE_LEASE" in err, f"got err={err!r}")
@@ -1559,7 +1561,7 @@ def test_lease_gate_active_lease_scope_escape_denied() -> None:
         code, err = hook.evaluate_invocation(
             {"tool_name": "Edit", "tool_input": {"file_path": outside_path}},
             gate=gate,
-            state_dir=td,
+            state_dir=os.path.join(td, "harness-state"),
         )
         check("exit 2 (DENY for worktree escape)", code == 2, f"got code={code}")
         check("err contains WORKTREE_ESCAPE", err is not None and "WORKTREE_ESCAPE" in err, f"got err={err!r}")
@@ -1573,14 +1575,14 @@ def test_lease_gate_active_lease_scope_escape_denied() -> None:
         code2, err2 = hook.evaluate_invocation(
             {"tool_name": "Edit", "tool_input": {"file_path": "/Users/someone/.ssh/id_rsa"}},
             gate=gate_unmanaged,
-            state_dir=td,
+            state_dir=os.path.join(td, "harness-state"),
         )
         check("exit 2 (DENY for scope escape on unmanaged path)", code2 == 2, f"got code={code2}")
         check("err contains SCOPE_ESCAPE", err2 is not None and "SCOPE_ESCAPE" in err2, f"got err={err2!r}")
 
 
-def test_bash_shell_chaining_and_redirection_blocked() -> None:
-    print("\n[Bash Safety] Shell chaining, subshells, redirections -> exit 2 (UNKNOWN/APPROVAL_REQUIRED)")
+def test_bash_shell_chaining_and_redirection_decisions() -> None:
+    print("\n[Bash Safety] Unresolved local work asks; protected and consequential operations deny")
     attacks = [
         "echo ok; touch /tmp/outside_leak.txt",
         "cat foo; python3 -c \"open('/tmp/leak.txt','w').write('pwn')\"",
@@ -1594,11 +1596,21 @@ def test_bash_shell_chaining_and_redirection_blocked() -> None:
         "find / -delete",
         "git log --output=/tmp/leak.txt",
         "python3 -c 'print(1)'",
+        "python3 -c 'print(1)\nprint(2)'",
         "touch newfile.py",
     ]
     for cmd in attacks:
         p = run_hook_subproc({"tool_name": "Bash", "tool_input": {"command": cmd}})
-        check(f"exit 2 for {cmd[:30]}", p.returncode == 2, f"got {p.returncode} for {cmd}")
+        # Compound syntax alone is not irreversible consequence or authority.
+        # Unresolved local writes still need native confirmation, never allow.
+        plain_local = cmd in {
+            "python3 -c 'print(1)'", "python3 -c 'print(1)\nprint(2)'",
+            "touch newfile.py", "git log --output=/tmp/leak.txt",
+            "echo ok; touch /tmp/outside_leak.txt",
+            "cat foo; python3 -c \"open('/tmp/leak.txt','w').write('pwn')\"",
+            "git log \n touch /tmp/chained.txt", "ls > /tmp/out.txt",
+        }
+        check_host_decision(p, "ask" if plain_local else "deny")
 
 
 def test_control_plane_modification_denied() -> None:
@@ -1630,7 +1642,7 @@ def test_control_plane_modification_denied() -> None:
         code, err = hook.evaluate_invocation(
             {"tool_name": "Edit", "tool_input": {"file_path": domain_file}},
             gate=gate,
-            state_dir=td,
+            state_dir=os.path.join(td, "harness-state"),
         )
         check("exit 2 (DENY on control plane)", code == 2, f"got {code}")
         check("err contains PROTECTED_ZONE_VIOLATION", err is not None and "PROTECTED_ZONE_VIOLATION" in err, f"got err={err!r}")
@@ -1664,21 +1676,21 @@ def test_active_lease_read_scope_escape_denied() -> None:
         gate = leg.LocalExecutionGate(state_store=store, domain_resolver=lambda _: domain, policy_evaluator=lambda _p, _path, _a: True)
 
         # 1. Read inside worktree -> ALLOW
-        c1, _ = hook.evaluate_invocation({"tool_name": "Read", "tool_input": {"file_path": os.path.join(worktree, "src", "code.py")}}, gate=gate, state_dir=td)
+        c1, _ = hook.evaluate_invocation({"tool_name": "Read", "tool_input": {"file_path": os.path.join(worktree, "src", "code.py")}}, gate=gate, state_dir=os.path.join(td, "harness-state"))
         check("Read inside worktree -> exit 0", c1 == 0, f"got {c1}")
 
         # 2. Read outside worktree -> DENY
-        c2, e2 = hook.evaluate_invocation({"tool_name": "Read", "tool_input": {"file_path": "/Users/someone/.ssh/id_rsa"}}, gate=gate, state_dir=td)
+        c2, e2 = hook.evaluate_invocation({"tool_name": "Read", "tool_input": {"file_path": "/Users/someone/.ssh/id_rsa"}}, gate=gate, state_dir=os.path.join(td, "harness-state"))
         check("Read outside worktree -> exit 2", c2 == 2, f"got {c2}")
         check("err contains SCOPE_ESCAPE", e2 is not None and "SCOPE_ESCAPE" in e2, f"got err={e2!r}")
 
         # 3. Bash cat outside worktree -> DENY
-        c3, e3 = hook.evaluate_invocation({"tool_name": "Bash", "tool_input": {"command": "cat /Users/someone/.ssh/id_rsa"}}, gate=gate, state_dir=td)
+        c3, e3 = hook.evaluate_invocation({"tool_name": "Bash", "tool_input": {"command": "cat /Users/someone/.ssh/id_rsa"}}, gate=gate, state_dir=os.path.join(td, "harness-state"))
         check("Bash cat outside worktree -> exit 2", c3 == 2, f"got {c3}")
         check("err contains SCOPE_ESCAPE", e3 is not None and "SCOPE_ESCAPE" in e3, f"got err={e3!r}")
 
         # 4. Bash head outside worktree -> DENY
-        c4, e4 = hook.evaluate_invocation({"tool_name": "Bash", "tool_input": {"command": "head -n 5 /etc/passwd"}}, gate=gate, state_dir=td)
+        c4, e4 = hook.evaluate_invocation({"tool_name": "Bash", "tool_input": {"command": "head -n 5 /etc/passwd"}}, gate=gate, state_dir=os.path.join(td, "harness-state"))
         check("Bash head outside worktree -> exit 2", c4 == 2, f"got {c4}")
         check("err contains SCOPE_ESCAPE", e4 is not None and "SCOPE_ESCAPE" in e4, f"got err={e4!r}")
 
@@ -1690,7 +1702,7 @@ def test_active_lease_read_scope_escape_denied() -> None:
                 "cwd": worktree,
             },
             gate=gate,
-            state_dir=td,
+            state_dir=os.path.join(td, "harness-state"),
         )
         check("Bash cat inside worktree -> exit 0", c5 == 0, f"got {c5}")
 
@@ -1701,7 +1713,7 @@ def test_active_lease_read_scope_escape_denied() -> None:
         c6, e6 = hook.evaluate_invocation(
             {"tool_name": "Bash", "tool_input": {"command": "cat -- -outside-note"}, "cwd": td},
             gate=gate,
-            state_dir=td,
+            state_dir=os.path.join(td, "harness-state"),
         )
         check("Bash option-terminated outside operand -> exit 2", c6 == 2, f"got {c6}")
         check("option-terminated operand reports SCOPE_ESCAPE", e6 is not None and "SCOPE_ESCAPE" in e6)
@@ -1712,7 +1724,7 @@ def test_active_lease_read_scope_escape_denied() -> None:
             code, err = hook.evaluate_invocation(
                 {"tool_name": tool_name, "tool_input": tool_input, "cwd": td},
                 gate=gate,
-                state_dir=td,
+                state_dir=os.path.join(td, "harness-state"),
             )
             check(f"path-less {tool_name} outside worktree -> exit 2", code == 2, f"got {code}")
             check(f"path-less {tool_name} reports SCOPE_ESCAPE", err is not None and "SCOPE_ESCAPE" in err)
@@ -1759,7 +1771,7 @@ def test_active_lease_missing_cwd_uses_process_cwd_for_relative_reads() -> None:
             code, err = hook.evaluate_invocation(
                 {"tool_name": "Read", "tool_input": {"file_path": "notes.txt"}},
                 gate=gate,
-                state_dir=td,
+                state_dir=os.path.join(td, "harness-state"),
             )
             check("missing cwd outside worktree -> exit 2", code == 2, f"got {code}")
             check("missing cwd outside worktree reports SCOPE_ESCAPE", err is not None and "SCOPE_ESCAPE" in err)
@@ -1768,7 +1780,7 @@ def test_active_lease_missing_cwd_uses_process_cwd_for_relative_reads() -> None:
             code, err = hook.evaluate_invocation(
                 {"tool_name": "Read", "tool_input": {"file_path": "notes.txt"}},
                 gate=gate,
-                state_dir=td,
+                state_dir=os.path.join(td, "harness-state"),
             )
             check("missing cwd inside worktree -> exit 0", code == 0, f"got {code} err={err!r}")
         finally:
@@ -1782,9 +1794,9 @@ def test_unmanaged_read_scope_allowed() -> None:
             state_path=os.path.join(td, "leases.json"),
             domain_resolver=lambda _: None,
         )
-        c1, _ = hook.evaluate_invocation({"tool_name": "Read", "tool_input": {"file_path": "/tmp/test.txt"}}, gate=gate_nolease, state_dir=td)
+        c1, _ = hook.evaluate_invocation({"tool_name": "Read", "tool_input": {"file_path": "/tmp/test.txt"}}, gate=gate_nolease, state_dir=os.path.join(td, "harness-state"))
         check("Unmanaged Read -> exit 0", c1 == 0, f"got {c1}")
-        c2, _ = hook.evaluate_invocation({"tool_name": "Bash", "tool_input": {"command": "cat /tmp/test.txt"}}, gate=gate_nolease, state_dir=td)
+        c2, _ = hook.evaluate_invocation({"tool_name": "Bash", "tool_input": {"command": "cat /tmp/test.txt"}}, gate=gate_nolease, state_dir=os.path.join(td, "harness-state"))
         check("Unmanaged cat -> exit 0", c2 == 0, f"got {c2}")
 
 
@@ -1805,7 +1817,7 @@ def test_corrupt_lease_state_denies_scope_sensitive_reads() -> None:
             {"tool_name": "NotebookEdit", "tool_input": {"notebook_path": "/tmp/normal.ipynb"}},
         ]
         for invocation in cases:
-            code, err = hook.evaluate_invocation(invocation, gate=gate, state_dir=td)
+            code, err = hook.evaluate_invocation(invocation, gate=gate, state_dir=os.path.join(td, "harness-state"))
             check(f"{invocation['tool_name']} -> exit 2", code == 2, f"got {code}")
             check(
                 f"{invocation['tool_name']} reports STATE_STORE_ERROR",
@@ -1855,7 +1867,7 @@ def test_relative_write_path_uses_invocation_cwd_for_lease_scope() -> None:
                     "cwd": outside,
                 },
                 gate=gate,
-                state_dir=td,
+                state_dir=os.path.join(td, "harness-state"),
             )
         finally:
             os.chdir(previous_cwd)
@@ -1919,7 +1931,7 @@ def test_valid_shaped_capability_tampering_fails_closed_through_runner() -> None
         code, err = hook.evaluate_invocation(
             {"tool_name": "Edit", "tool_input": {"file_path": os.path.join(worktree, "file.txt")}},
             gate=gate,
-            state_dir=td,
+            state_dir=os.path.join(td, "harness-state"),
         )
 
         check("tampered capability -> exit 2", code == 2, f"got {code}")
@@ -1955,7 +1967,7 @@ def test_legacy_and_missing_capability_state_fail_closed_through_runner() -> Non
             code, err = hook.evaluate_invocation(
                 {"tool_name": "Edit", "tool_input": {"file_path": os.path.join(worktree, "file.txt")}},
                 gate=gate,
-                state_dir=td,
+                state_dir=os.path.join(td, "harness-state"),
             )
             check(f"{label} -> exit 2", code == 2, f"got {code}")
             check(f"{label} reports STATE_STORE_ERROR", err is not None and "STATE_STORE_ERROR" in err)
@@ -1964,7 +1976,7 @@ def test_legacy_and_missing_capability_state_fail_closed_through_runner() -> Non
 def test_translation_failure_does_not_skip_gate() -> None:
     print("\n[Presentation Boundary] Konjac failure does not skip canonical gate")
     original_translate = hook.konjac.translate_tool_event
-    original_evaluate = hook.runner.evaluate_invocation
+    original_evaluate = hook.runner.evaluate_invocation_result
     original_stdin = sys.stdin
     original_stdout = sys.stdout
     original_stderr = sys.stderr
@@ -1977,18 +1989,18 @@ def test_translation_failure_does_not_skip_gate() -> None:
 
     def fake_evaluate(data):
         calls.append(data)
-        return 0, None
+        return SimpleNamespace(decision="deny", reason="synthetic policy denial", code="POLICY_DENIED")
 
     try:
         hook.konjac.translate_tool_event = fail_translation
-        hook.runner.evaluate_invocation = fake_evaluate
+        hook.runner.evaluate_invocation_result = fake_evaluate
         sys.stdin = io.StringIO(json.dumps({"tool_name": "Read", "tool_input": {}}))
         sys.stdout = stdout
         sys.stderr = stderr
         result = hook.main()
     finally:
         hook.konjac.translate_tool_event = original_translate
-        hook.runner.evaluate_invocation = original_evaluate
+        hook.runner.evaluate_invocation_result = original_evaluate
         sys.stdin = original_stdin
         sys.stdout = original_stdout
         sys.stderr = original_stderr
@@ -1997,6 +2009,8 @@ def test_translation_failure_does_not_skip_gate() -> None:
     check("canonical gate still evaluated", len(calls) == 1, f"calls={len(calls)}")
     check("Konjac fallback stdout is JSON", stdout.getvalue().lstrip().startswith("{"))
     output = json.loads(stdout.getvalue())
+    check("presentation failure preserves denial", output["hookSpecificOutput"]["permissionDecision"] == "deny")
+    check("presentation failure preserves policy reason", output["hookSpecificOutput"]["permissionDecisionReason"] == "synthetic policy denial")
     check("Konjac fallback is user-visible", "systemMessage" in output)
     check("Konjac failure does not emit success stderr", stderr.getvalue() == "")
 
@@ -2063,8 +2077,8 @@ def test_posttooluse_failure_hook() -> None:
 
 def main() -> None:
     test_read_tool_allowed()
-    test_pretooluse_allow_emits_structured_system_message()
-    test_pretooluse_write_uses_visible_detailed_banner()
+    test_pretooluse_read_silently_defers()
+    test_pretooluse_write_silently_defers()
     test_edit_tool_allowed_tier_normal_unmanaged()
     test_unmanaged_protected_paths_use_canonical_tier()
     test_compound_secret_directories_use_secret_tier()

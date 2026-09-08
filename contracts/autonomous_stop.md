@@ -30,6 +30,7 @@
 ## Host integration status
 
 `runtime/stop_adapter.py`は上記5条件を評価する純粋なpredicateと結果renderingを実装・
-単体テストしている。現行Claude setupが接続するのは`PreToolUse` / `PermissionRequest` /
-`PostToolUseFailure`の3本であり、Claude `Stop` hookやタスク完了理解へは結線していない。
+単体テストしている。開発候補の標準setupは`PermissionRequest` / `PostToolUseFailure`の
+説明2本を接続し、明示的な`--managed`だけが`PreToolUse`を追加する。
+Claude `Stop` hookやタスク完了理解へは結線していない。
 したがって自動host停止を`ENFORCED`とは主張しない。

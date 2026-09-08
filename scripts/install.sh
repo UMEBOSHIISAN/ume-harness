@@ -2,7 +2,7 @@
 # install.sh — Fail-Safe Portable Harness Prefix Installer
 #
 # Installs the explicit Generic Install Payload into:
-#   ${PREFIX}/lib/ume-harness/v0.1.6/
+#   ${PREFIX}/lib/ume-harness/v0.1.7/
 #   ${PREFIX}/bin/ume-harness
 #
 # Boundary Guarantee:
@@ -16,7 +16,7 @@ set -euo pipefail
 export PYTHONDONTWRITEBYTECODE=1
 
 SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VERSION="v0.1.6"
+VERSION="v0.1.7"
 PREFIX="${HOME}/.local"
 FORCE=false
 DRY_RUN=false
@@ -25,7 +25,7 @@ usage() {
     echo "Usage: $0 [OPTIONS]"
     echo "Options:"
     echo "  --prefix <DIR>    Installation prefix (default: ~/.local)"
-    echo "  --force           Replace a verified ume-harness installation of the same version"
+    echo "  --force           Accepted for compatibility; existing installations are never replaced"
     echo "  --dry-run         Show actions without performing changes"
     echo "  -h, --help        Show this help message"
     exit 0
@@ -136,7 +136,7 @@ fi
 
 if [ -d "${LIB_DIR}" ]; then
     if [ "${FORCE}" = false ]; then
-        echo "❌ Target version ${VERSION} already exists at ${LIB_DIR}. Use --force to replace a verified installation." >&2
+        echo "❌ Target version ${VERSION} already exists at ${LIB_DIR}. In-place replacement is disabled, including --force." >&2
         exit 1
     fi
     if ! is_owned_payload; then
@@ -160,6 +160,10 @@ fi
 # 4. Safe Staging Installation
 if [ -L "${STAGING_PARENT}" ] || { [ -e "${STAGING_PARENT}" ] && [ ! -d "${STAGING_PARENT}" ]; }; then
     echo "❌ Collision: Unsafe staging parent exists at ${STAGING_PARENT}. Refusing to follow or replace it." >&2
+    exit 1
+fi
+if [ -d "${LIB_DIR}" ]; then
+    echo "❌ Replacement disabled: existing installation was preserved. Use a separate prefix for a new installation." >&2
     exit 1
 fi
 mkdir -p "${STAGING_PARENT}"
@@ -190,9 +194,6 @@ chmod +x "${STAGING_DIR}/scripts/uninstall.sh"
 # 5. Atomic Promotion to Version Directory
 echo "-> Promoting staging to ${LIB_DIR}..."
 mkdir -p "$(dirname "${LIB_DIR}")"
-if [ -d "${LIB_DIR}" ]; then
-    rm -rf "${LIB_DIR}"
-fi
 mv "${STAGING_DIR}" "${LIB_DIR}"
 
 # 6. Install CLI entrypoint
