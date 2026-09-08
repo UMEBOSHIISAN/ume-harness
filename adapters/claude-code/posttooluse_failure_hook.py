@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """posttooluse_failure_hook.py — Claude Code PostToolUseFailure Hook Adapter.
 
-Triggered when a tool execution fails. Renders truthful, non-fabricating Japanese explanations
-clarifying that the execution failed, that partial state changes are unconfirmed without check,
-and recommending next verification steps (e.g. git status).
+Triggered when a tool execution fails. Read/search failures get read-only guidance;
+other failures leave partial state changes unconfirmed. Error bodies are not echoed,
+and presentation never grants permission.
 """
 
 from __future__ import annotations

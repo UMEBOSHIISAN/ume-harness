@@ -149,7 +149,7 @@ Current development candidate identity for isolated tests (not a published relea
 ```
 python3 scripts/health_check.py --installed-dir . --identity-only --json
   -> all_passed: true
-  -> root: bf62c93d228d6e75331a66dc084222759d222a19d2381cf361fdb171ac424beb
+  -> root: d8fa0503c25ff9249c7423170ac84f112f26d6b80e79ee48e86711b8b94d6f2b
 
 python3 scripts/health_check.py --installed-dir . --json
   -> all_passed: true
