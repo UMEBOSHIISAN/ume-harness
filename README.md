@@ -2,7 +2,8 @@
 
 [English](README.en.md) · Technical Preview · [v0.1.6](https://github.com/UMEBOSHIISAN/ume-harness/releases/tag/v0.1.6)
 
-このmain上のREADMEには、歴史的なv0.1.6 Release後の未公開の公開面・導入改善が含まれます。公開済みv0.1.6の配布bytesは書き換えません。
+公開済みの機能はv0.1.6を基準に説明します。このブランチのPillow更新と説明文の修正は、
+公開済みv0.1.6のタグや配布ファイルには含まれません。
 
 [![CI](https://github.com/UMEBOSHIISAN/ume-harness/actions/workflows/ci.yml/badge.svg)](https://github.com/UMEBOSHIISAN/ume-harness/actions/workflows/ci.yml)
 
@@ -47,6 +48,22 @@ UME-HARNESSは、普通の日本語で受けた依頼を、AI coding agentが作
 人間が全部を細かく操作するのでも、AIへ全部を明け渡すのでもなく、
 今回確認できる範囲、確認が必要な操作、まだ実行していないことを先に見える形にするためのローカル作業面です。
 
+## v0.1.6で変わったこと
+
+Claude Codeでツールを読み込み、質問に答え、作業計画を確認する一連の操作を扱えるようになりました。
+
+- `ToolSearch`によるツール定義の読み込みを、未知のツールとして止めずにClaude Codeへ返します。読み込んだツールの実行は、その都度別に権限を確認します。
+- `AskUserQuestion`と`ExitPlanMode`の質問・計画承認はClaude Code自身が扱います。Harnessが回答や承認を代行することはありません。
+- インストールしたv0.1.6の実機テストで、質問・計画確認・読み取り・書き込み・失敗通知までの流れを確認しました。`EnterPlanMode`の操作は確認済みですが、そのPreToolUseイベントの発火までは確認していません。
+
+検証範囲と未接続の機能は[Support matrix](SUPPORT_MATRIX.md)に記載しています。
+
+### このブランチの保守更新
+
+Pillowを11.3.0から12.3.0へ更新しました。PillowはREADME画像を生成する開発用依存関係で、
+通常のインストールやCLI実行には使いません。生成し直した8点の画像は従来と同一です。
+この更新で利用者向けの実行機能や自動承認機能が増えるわけではありません。
+
 ## 現在の実装
 
 現在のreleaseには、役割の異なる二つのsurfaceがあります。
@@ -57,8 +74,9 @@ UME-HARNESSは、普通の日本語で受けた依頼を、AI coding agentが作
 質問が残る場合は、作業を始める前にまとめて表示します。
 standalone CLIは「まだ実行されていません」と表示し、preview/reportまでで停止します。
 
-CLIはClaude Sonnet 5を呼ぶ構成ですが、現行releaseからraw semantic runへ到達できないため、
-モデル精度を保証しません。保存済みfixtureを使うオフライン経路もあります。
+CLIは`claude -p --model sonnet`を呼びます。モデルの固定バージョンは指定していません。
+解釈精度を再検証するための生データは配布物に含まれないため、精度の保証はありません。
+保存済みJSONを使うオフライン経路もあります。
 
 ### Claude Code Host Adapter
 
@@ -86,7 +104,7 @@ UME-HARNESSは外部のConsequential Authorityを持たず、Mothershipを自動
 ## Preview Quick Start
 
 ```bash
-git clone https://github.com/UMEBOSHIISAN/ume-harness.git
+git clone --branch v0.1.6 --depth 1 https://github.com/UMEBOSHIISAN/ume-harness.git
 cd ume-harness
 ./scripts/install.sh
 
@@ -125,7 +143,7 @@ Translation Konjacは、tool eventを人間向けの日本語へ言い換えるp
 ### インストール
 
 ```bash
-git clone https://github.com/UMEBOSHIISAN/ume-harness.git
+git clone --branch v0.1.6 --depth 1 https://github.com/UMEBOSHIISAN/ume-harness.git
 cd ume-harness
 ./scripts/install.sh
 ```
@@ -200,6 +218,11 @@ installed payloadはfrozen byte identityで検査されます。ただしinstall
 trusted canonical/generated-release checkoutを前提とし、独立した署名検証ではありません。
 
 ## 技術資料
+
+配布物に含まれるHuman LayerのREADME・契約・プロンプトは設計資料です。
+そこにある「進める／修正する／やめる」の対話、作業の実行、完了後の報告は、
+現行standalone CLIが提供する一連の操作ではありません。実装済みの動作は上の
+「現在の実装」と[Support matrix](SUPPORT_MATRIX.md)を参照してください。
 
 - [Human Layer（公開済みv0.1.6の設計資料）](ux/japanese-human-layer/README.md)
 - [Claude Code adapter](adapters/claude-code/README.md)

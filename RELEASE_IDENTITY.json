@@ -15,7 +15,7 @@
     },
     "MANIFEST.md": {
       "mode": "100644",
-      "sha256": "ab9727b90da17e8864b34d0ef174390f18b429099290b289cb7c6ca871841a4f"
+      "sha256": "e907811446bfab7a171cf5a5303a40956be6cf22115646fd9f608afc5298ecec"
     },
     "NOTICE": {
       "mode": "100644",
@@ -31,11 +31,11 @@
     },
     "README.en.md": {
       "mode": "100644",
-      "sha256": "bd332888e83ea49b9f15b99b3cc0cefbc8f3194b80dcb0bf20c6aaeaf0ac5564"
+      "sha256": "0ce4cfd65cc492b63cb8afef750c15682cfa19887ab89f339beea6d917933c15"
     },
     "README.md": {
       "mode": "100644",
-      "sha256": "5fb091ab1293df708c2fd787476fef9902c141a7a0b4e62e7bb5e25064bdee77"
+      "sha256": "c3133b114fb965c63e6e6a478a1a3bf639b84b5ab798362a2899b83c64081d76"
     },
     "SECURITY.md": {
       "mode": "100644",
@@ -43,7 +43,7 @@
     },
     "SUPPORT_MATRIX.md": {
       "mode": "100644",
-      "sha256": "49e7c4e49b958cc59a657a63c86963b714e8fed408666d3cbbeb4f1e70683f9c"
+      "sha256": "d048e0102f3ba3c4512a481bae4eae0f005a30aec63381f35499a34f4fed9a64"
     },
     "VERSION": {
       "mode": "100644",
@@ -167,7 +167,7 @@
     },
     "examples/basic_usage.md": {
       "mode": "100644",
-      "sha256": "3449080d6b6a18a7ab2c4911457c0043a89d6561165b56d6caf42d95330a8d50"
+      "sha256": "47440b149d705cf4e4f9099eff12fbad1085a2d5995b02a8b945d944b4408c6c"
     },
     "package_manifest.json": {
       "mode": "100644",
@@ -323,7 +323,7 @@
     }
   },
   "schema": "ume-harness-release-identity.v1",
-  "source_commit": "815c10fbc39190ddc622f6e668cdde5e24c2554e",
+  "source_commit": "a9cf02f576f212d0cbe5cd30399667fee1306a68",
   "source_payload_count": 80,
-  "source_payload_root_sha256": "54c64e27d432e542b819fb1c17902010a8dfebfda66f9c7cef2fc9ed1c5778f6"
+  "source_payload_root_sha256": "c6e12056dad860995f189c84c44ccfab0b7cfec91ec591462c5c834da140a22e"
 }
