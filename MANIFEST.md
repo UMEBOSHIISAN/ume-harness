@@ -1,9 +1,8 @@
-# Release Manifest (ume-harness v0.1.7 candidate)
+# Release Manifest (ume-harness v0.1.7 Technical Preview)
 
-This is an unpublished v0.1.7 Technical Preview candidate based on v0.1.6.
-Candidate identity updates below support isolated lifecycle testing;
-no published v0.1.6 installation is replaced. Publication remains pending
-final candidate verification and interactive host acceptance.
+This is the v0.1.7 Technical Preview release based on v0.1.6.
+The identity below covers the exact release payload; no existing v0.1.6
+installation is replaced by package installation.
 
 `ume-harness-engineering` is the sole canonical source. The public
 `ume-harness` repository is a generated release mirror and is not a supported
@@ -144,12 +143,12 @@ python3 -m pytest -q -p no:cacheprovider tests ux/japanese-human-layer/tests
   -> 324 passed
 ```
 
-Current development candidate identity for isolated tests (not a published release):
+Current v0.1.7 release identity:
 
 ```
 python3 scripts/health_check.py --installed-dir . --identity-only --json
   -> all_passed: true
-  -> root: d8fa0503c25ff9249c7423170ac84f112f26d6b80e79ee48e86711b8b94d6f2b
+  -> root: 6bf4573209f791117e145ac96ee544410827cee0a3a44626be168ee070bede65
 
 python3 scripts/health_check.py --installed-dir . --json
   -> all_passed: true

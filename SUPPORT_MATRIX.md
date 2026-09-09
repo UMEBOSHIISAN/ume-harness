@@ -1,4 +1,4 @@
-# Support Matrix (v0.1.7 candidate)
+# Support Matrix (v0.1.7 Technical Preview)
 
 Historical baseline: v0.1.6 generated public release mirror / 2026-09-05.
 
@@ -7,9 +7,20 @@ hooks); `setup --managed` explicitly adds conservative PreToolUse enforcement.
 The enforcement rows below describe that opt-in profile, not ordinary native CC.
 Neither static success nor valid registration inventory proves live host reload.
 
-> Local-work policy開発候補の変更を含みます。以下のv0.1.6の検証記録は歴史的な
-> baselineです。新しいdefer/ask/deny/error、通常編集のLease不要化、登録診断は
-> 候補の独立した検証を必要とし、fresh interactive host acceptanceは未完了です。
+Published-release selection and side-by-side upgrade instructions are maintained
+in [README](README.md#update) / [English README](README.en.md#update). Preserve
+old installations until new-prefix
+installation and explicit connection switching have been verified.
+
+Explicit-prefix diagnostics require the selected prefix's actual CLI wrapper;
+missing, non-executable, and directory entrypoints fail without a payload CLI
+fallback (`test_health_explicit_prefix_cannot_fall_back_to_payload_cli`).
+No-prefix source/staging diagnostics do not prove an installed prefix works. Isolated recovery
+after promotion/before wrapper creation was demonstrated via external trusted
+uninstall and ordinary reinstall; partial-wrapper recovery is not claimed.
+
+> v0.1.7のlocal-work policy変更を含みます。以下のv0.1.6の検証記録は歴史的な
+> baselineです。fresh hostの表示・権限設定・実イベントは、記載した環境と範囲に限って扱います。
 
 機能の基準は2026-09-05のv0.1.6です。説明文の照合・訂正日: 2026-09-08。
 
@@ -39,6 +50,17 @@ Platformの3面に分ける。単体テスト結果をphysical host proofへ昇�
 回答を集めて作業を開始するループ、ファイル操作、作業完了の検証は実装していません。
 fixturesの自己整合性テストは、モデル精度や作業の実行成功を証明しません。
 
+## Optional macOS notification boundary
+
+`UME_HARNESS_MACOS_NOTIFICATIONS=1` explicitly enables an existing native notifier
+for the fixed Japanese PermissionRequest notice. Default off, macOS only, no
+automatic dependency installation or OS permission changes, no approval actions.
+The isolated prototype was human-observed before the native Yes/No choice on
+CC2.1.263/macOS26.6.2/terminal-notifier3.1.0. This is not operation translation or
+proof of the final generated package. Native notification permission is required;
+missing/failed delivery is non-blocking and bounded without retries. Apple Terminal
+OSC2-title readability failed the earlier human test and is not a supported UI claim.
+
 ## Claude Code Host Adapter
 
 | Capability | Status | Evidence / boundary |
@@ -49,7 +71,7 @@ fixturesの自己整合性テストは、モデル精度や作業の実行成功
 | AskUserQuestion / ExitPlanMode host-interaction path | **implemented / static adapter tested** | activation/closure attestation後にexact名だけをClaudeへ返す。回答・許可・authorityは生成しない |
 | ToolSearch host capability discovery | **implemented / static adapter tested** | Claudeの遅延tool schema loaderだけをexact名で返す。ロード後の実tool invocationは別PreToolUseで再判定し、許可を継承しない |
 | EnterPlanMode host-interaction path | **defensive compatibility / static runner tested** | built-in toolとしてexact名を扱うが、live ClaudeがPreToolUse eventを発火することは未確認 |
-| Physical interactive Claude 3-hook + host interaction | **physically demonstrated** | Installed exact candidate `025c4cf` lineage was exercised with ToolSearch, EnterPlanMode, AskUserQuestion, ExitPlanMode, Read, Write, and PostToolUseFailure; evidence is kept outside the source tree |
+| Physical interactive Claude 3-hook + host interaction | **physically demonstrated** | An installed exact candidate lineage was exercised with ToolSearch, EnterPlanMode, AskUserQuestion, ExitPlanMode, Read, Write, and PostToolUseFailure; evidence is kept outside the source tree |
 | Non-interactive `claude -p` host interaction | **not claimed** | Harnessは回答、`updatedInput`、approval、authorityを合成しない |
 | Lease expected-state / concurrent / out-of-band host enforcement | **not wired / experimental** | Core state machineryのみ実装。Claude operation lifecycleは未接続 |
 | Autonomous Claude Stop | **not wired** | acceptance predicateのみ実装。Stop hookなし |
@@ -63,11 +85,11 @@ a personal hook directory, a sandbox-denied Bash removal, and human cleanup.
 This is evidence of the observed failure presentation, not proof that public
 Harness owns the local SessionStart/front-door/rules or enforces all file tools.
 The package's default presentation profile has no PreToolUse enforcement.
-The reported Read wording was misleading and is corrected in this candidate.
+The reported Read wording was misleading and is corrected in this release.
 
 Protected-path mutation is not an accepted smoke-test procedure. The permission
-allow/ask/deny matrix and exact revised-candidate interactive acceptance remain
-pending. Local rules and native permission policy are separate from public package
+Static tests do not claim a complete allow/ask/deny matrix for every host.
+Local rules and native permission policy are separate from the public package
 acceptance; no blanket “no duplicate gates” or “safe across all tools” claim follows.
 
 ## Platform

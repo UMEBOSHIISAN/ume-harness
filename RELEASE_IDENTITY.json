@@ -15,7 +15,7 @@
     },
     "MANIFEST.md": {
       "mode": "100644",
-      "sha256": "862490bd273834b43dc6ede2380d65a2db1468bd3d74deb04399205ae5739fa9"
+      "sha256": "1d01c9e3f1d81c4419b4994f2cc9361e23475c80394c728c9dfc2173cede799b"
     },
     "NOTICE": {
       "mode": "100644",
@@ -31,11 +31,11 @@
     },
     "README.en.md": {
       "mode": "100644",
-      "sha256": "f34536eadb393a8ea3e91be6acbf5c0548ac32a5c1adc4519505a38d403b7b7c"
+      "sha256": "4707c7ad416fdd71f2d7ade78899728eb72ae4f9ac6c4324e7a7901e00137874"
     },
     "README.md": {
       "mode": "100644",
-      "sha256": "12e437f6f5ae07bf247e528a41df69e4d29ceaa3d788307e53e8c50f36d51375"
+      "sha256": "14881dd1f9e4ae4e8101cb669bbb75b852d0fc587798429f5747adbddbfbe43c"
     },
     "SECURITY.md": {
       "mode": "100644",
@@ -43,7 +43,7 @@
     },
     "SUPPORT_MATRIX.md": {
       "mode": "100644",
-      "sha256": "9803e4f1c1e7b29c2013799b10ba5f77a805d3f20107afcf6ec4d30424498a0b"
+      "sha256": "e686a72279f92ae56e1269f3fb3c61405682f40885c9b6f98509c09ffd5a399c"
     },
     "VERSION": {
       "mode": "100644",
@@ -51,7 +51,7 @@
     },
     "adapters/claude-code/README.md": {
       "mode": "100644",
-      "sha256": "fd44d4e53a46cefff863717d220672a010d0ca87f9fee35ee15b71083c1fdf5c"
+      "sha256": "35ed7a18146f080914a980351b5e7d39ca0099468ceda152072d4477f9cff94a"
     },
     "adapters/claude-code/lease_gate_runner.py": {
       "mode": "100755",
@@ -59,7 +59,7 @@
     },
     "adapters/claude-code/permission_request_hook.py": {
       "mode": "100755",
-      "sha256": "47f2144708df61faf83ff2a7786564bbc19cf46df4e7147254f1b930932ba113"
+      "sha256": "b72f1f0bb1f70ece244e59a7671b4ff5a22b3b0142e9a0b02b3d3ed178ee9275"
     },
     "adapters/claude-code/posttooluse_failure_hook.py": {
       "mode": "100755",
@@ -171,7 +171,7 @@
     },
     "package_manifest.json": {
       "mode": "100644",
-      "sha256": "caef1b45cd63ddbb8d7374022b422e3a6cf3dc065d576ac99a652ffe2c3c3844"
+      "sha256": "03580d95bdab270e1b0d83a3b0686a6efeb3f63e56735d2cb3fe3f84dd431513"
     },
     "runtime/activation_updater.py": {
       "mode": "100644",
@@ -187,7 +187,7 @@
     },
     "runtime/hook_setup_service.py": {
       "mode": "100644",
-      "sha256": "5c67abcb1886a086affe3ec789108b5d3860048eff28bacb70c7ad3b7d8272c3"
+      "sha256": "a7c469be6d70a02b25e3481ff15a3d43cfbe3b2d6682fad42a4cb5879d5903b1"
     },
     "runtime/human_layer_adapter.py": {
       "mode": "100644",
@@ -223,7 +223,7 @@
     },
     "scripts/health_check.py": {
       "mode": "100755",
-      "sha256": "77c64af9554675a8fd602284d873259a5b1b85d047fe27936293557a74877797"
+      "sha256": "f480b3af6d972934bd04118fad45617ed10b9cefd1b18035ad6ec5bc6c62fc53"
     },
     "scripts/install.sh": {
       "mode": "100755",
@@ -231,7 +231,7 @@
     },
     "scripts/release_promote.py": {
       "mode": "100755",
-      "sha256": "269691755f41d5674de637892f951560bf6a5859bcaa8c0acafbb7764a13d8c1"
+      "sha256": "6e80850f3c0029ee4b2099da6dd4513986a42694a7fdf6f3b862041081945a08"
     },
     "scripts/uninstall.sh": {
       "mode": "100755",
@@ -255,7 +255,7 @@
     },
     "tests/test_claude_code_adapter.py": {
       "mode": "100644",
-      "sha256": "7a65b0d5f3143882cb01f5f62da87bcf248a0a80ebc68cc46a4d148086f99626"
+      "sha256": "8c4d0d304f320d668be3c682d38095ccb4bc0ae597b75367410e7d7726d8ccf1"
     },
     "tests/test_cli.py": {
       "mode": "100644",
@@ -295,11 +295,11 @@
     },
     "tests/test_portable_core.py": {
       "mode": "100644",
-      "sha256": "108858020343fbbdb829b968dcfacfe10212adf2e6e91eaba1220d2bfe94e5d5"
+      "sha256": "266f838915f65ebc58f4abb90f561b603aa1c45b0f4dfc92a0196c2658a90b9e"
     },
     "tests/test_presentation_safety.py": {
       "mode": "100644",
-      "sha256": "450bda9e89a7302a7d4a999eed4dd3007fae5b5930f5ad945ad4ca88f97b5ded"
+      "sha256": "c1ced5ab7b8fd3800b7f27b79071b4b94b21df74ae6434a06380b2a1673d20b5"
     },
     "tests/test_pretooluse_decisions.py": {
       "mode": "100644",
@@ -307,7 +307,7 @@
     },
     "tests/test_release_lifecycle.py": {
       "mode": "100644",
-      "sha256": "dde323cec31c439192d6d52eb7310ec2f1021a7637b2e944fdec3a5576ad8ef1"
+      "sha256": "860180c68b34c51658bcb6b240e118dcf270fa7da318f9016c41c6167075cb2f"
     },
     "tests/test_translation_konjac.py": {
       "mode": "100644",
@@ -351,7 +351,7 @@
     }
   },
   "schema": "ume-harness-release-identity.v1",
-  "source_commit": "7be7c8b550b0c33c0b223a8e4c75ef8dcf360c91",
+  "source_commit": "597bb5500a5d7ca5946d453ae56b87f27e925fde",
   "source_payload_count": 87,
-  "source_payload_root_sha256": "1c33d84ba8afb25535c6c16ccd2fa3acda02c218ac0e9722595f9dae89d3b13a"
+  "source_payload_root_sha256": "fe076a1f0004704b31146c91312925e9ba5447a815346b30dcfe000eb648e868"
 }

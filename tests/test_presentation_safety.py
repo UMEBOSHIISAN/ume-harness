@@ -1,6 +1,7 @@
 """Synthetic-only regressions for bounded, non-authoritative presentation."""
 
 import json
+import io
 import os
 from pathlib import Path
 import subprocess
@@ -10,7 +11,9 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "runtime"))
+sys.path.insert(0, str(ROOT / "adapters" / "claude-code"))
 import translation_konjac as konjac
+import permission_request_hook
 
 VALUE = "synthetic-value-U5-ONLY"
 INLINE = f"API_KEY={VALUE}"
@@ -147,6 +150,155 @@ def run_hook(name, payload, tmp_path, *, raw=False, fault=""):
             }
     assert not list(tmp_path.iterdir()), "hook created files in its isolated home/cwd"
     return output
+
+
+def invoke_permission_hook(monkeypatch, payload):
+    monkeypatch.setattr(permission_request_hook, "subprocess", subprocess, raising=False)
+    stdout = io.StringIO()
+    monkeypatch.setattr(permission_request_hook.sys, "stdin", io.StringIO(json.dumps(payload)))
+    monkeypatch.setattr(permission_request_hook.sys, "stdout", stdout)
+    result = permission_request_hook.main()
+    assert result == 0
+    assert permission_request_hook.sys.stderr is not None
+    return json.loads(stdout.getvalue())
+
+
+def enable_fake_macos_notifier(monkeypatch, *, path_exists=True):
+    monkeypatch.setattr(permission_request_hook, "subprocess", subprocess, raising=False)
+    monkeypatch.setattr(permission_request_hook.sys, "platform", "darwin")
+    monkeypatch.setenv("UME_HARNESS_MACOS_NOTIFICATIONS", "1")
+    monkeypatch.setattr(permission_request_hook.os.path, "isfile", lambda path: path_exists)
+    monkeypatch.setattr(permission_request_hook.os, "access", lambda path, mode: path_exists)
+
+
+def test_macos_notification_is_opt_in_and_uses_fixed_command(monkeypatch):
+    calls = []
+
+    def fake_run(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    enable_fake_macos_notifier(monkeypatch)
+    monkeypatch.setattr(permission_request_hook.subprocess, "run", fake_run)
+
+    output = invoke_permission_hook(monkeypatch, {
+        "tool_name": "Bash",
+        "tool_input": {"command": "curl -H 'Authorization: Bearer secret' https://example.invalid"},
+    })
+
+    assert len(calls) == 1
+    assert calls[0] == (([
+        "/opt/homebrew/bin/terminal-notifier",
+        "-title",
+        "UME-HARNESS 許可確認",
+        "-message",
+        "Claude Codeが操作の許可を求めています。内容をCCの画面で確認し、許可または拒否を選んでください。この通知は承認を行いません。",
+    ],), {
+        "stdin": permission_request_hook.subprocess.DEVNULL,
+        "stdout": permission_request_hook.subprocess.DEVNULL,
+        "stderr": permission_request_hook.subprocess.DEVNULL,
+        "timeout": 1,
+        "check": False,
+    })
+    assert "secret" not in json.dumps(output, ensure_ascii=False)
+    assert "hookSpecificOutput" not in output
+
+
+def test_macos_notification_is_disabled_without_exact_opt_in(monkeypatch):
+    calls = []
+    monkeypatch.setattr(permission_request_hook, "subprocess", subprocess, raising=False)
+    monkeypatch.setattr(permission_request_hook.sys, "platform", "darwin")
+    monkeypatch.delenv("UME_HARNESS_MACOS_NOTIFICATIONS", raising=False)
+    monkeypatch.setattr(permission_request_hook.subprocess, "run", lambda *args, **kwargs: calls.append(args))
+
+    output = invoke_permission_hook(monkeypatch, {"tool_name": "Read", "tool_input": {}})
+
+    assert calls == []
+    assert "systemMessage" in output
+
+
+def test_macos_notification_is_disabled_off_darwin(monkeypatch):
+    calls = []
+    monkeypatch.setattr(permission_request_hook, "subprocess", subprocess, raising=False)
+    monkeypatch.setattr(permission_request_hook.sys, "platform", "linux")
+    monkeypatch.setenv("UME_HARNESS_MACOS_NOTIFICATIONS", "1")
+    monkeypatch.setattr(permission_request_hook.subprocess, "run", lambda *args, **kwargs: calls.append(args))
+
+    output = invoke_permission_hook(monkeypatch, {"tool_name": "Read", "tool_input": {}})
+
+    assert calls == []
+    assert "systemMessage" in output
+
+
+@pytest.mark.parametrize("failure", [OSError("notifier unavailable"), subprocess.TimeoutExpired("terminal-notifier", 1)])
+def test_macos_notification_failure_is_non_authoritative(monkeypatch, failure):
+    enable_fake_macos_notifier(monkeypatch)
+    calls = []
+
+    def failing_run(*args, **kwargs):
+        calls.append((args, kwargs))
+        raise failure
+
+    monkeypatch.setattr(permission_request_hook.subprocess, "run", failing_run)
+    output = invoke_permission_hook(monkeypatch, {"tool_name": "Read", "tool_input": {}})
+
+    assert len(calls) == 1
+    assert "systemMessage" in output
+    assert "hookSpecificOutput" not in output
+
+
+def test_macos_notification_nonzero_is_non_authoritative(monkeypatch):
+    enable_fake_macos_notifier(monkeypatch)
+    calls = []
+
+    def nonzero_run(*args, **kwargs):
+        calls.append((args, kwargs))
+        return subprocess.CompletedProcess(args=args[0], returncode=73)
+
+    monkeypatch.setattr(permission_request_hook.subprocess, "run", nonzero_run)
+    output = invoke_permission_hook(monkeypatch, {"tool_name": "Read", "tool_input": {}})
+
+    assert len(calls) == 1
+    assert "systemMessage" in output
+    assert "hookSpecificOutput" not in output
+
+
+def test_macos_notification_skips_missing_notifier_and_malformed_input(monkeypatch):
+    enable_fake_macos_notifier(monkeypatch, path_exists=False)
+    calls = []
+    monkeypatch.setattr(permission_request_hook.subprocess, "run", lambda *args, **kwargs: calls.append(args))
+
+    output = invoke_permission_hook(monkeypatch, {"tool_name": "Read", "tool_input": {}})
+    assert calls == []
+    assert "systemMessage" in output
+
+    monkeypatch.setattr(permission_request_hook.sys, "stdin", io.StringIO("[]"))
+    monkeypatch.setattr(permission_request_hook.sys, "stdout", io.StringIO())
+    assert permission_request_hook.main() == 0
+    assert calls == []
+
+    monkeypatch.setattr(permission_request_hook.sys, "stdin", io.StringIO("not-json"))
+    monkeypatch.setattr(permission_request_hook.sys, "stdout", io.StringIO())
+    assert permission_request_hook.main() == 0
+    assert calls == []
+
+
+@pytest.mark.parametrize("fault", ["", "translation"])
+def test_permission_title_survives_missing_transcript_surface_without_echo(tmp_path, fault):
+    output = run_hook("permission_request_hook.py", {
+        "tool_name": VALUE,
+        "tool_input": {"command": f"{BEARER}\x1b]2;injected\x07"},
+    }, tmp_path, fault=fault)
+    sequences = output["terminalSequence"].split("\x07")
+    titles = [part[4:] for part in sequences if part.startswith("\x1b]2;")]
+    assert len(titles) == 1, "PermissionRequest needs a title when host drops systemMessage"
+    title = titles[0]
+    assert "許可確認" in title and "未判定" in title
+    assert len(title) <= 80
+    assert VALUE not in title and "injected" not in title
+    assert all(ord(char) >= 32 and not 127 <= ord(char) <= 159 for char in title)
+    assert all(part.startswith(("\x1b]777;notify;ume-harness;", "\x1b]2;"))
+               for part in sequences if part)
+    assert set(output) == {"systemMessage", "terminalSequence"}
 
 
 @pytest.mark.parametrize("command", [

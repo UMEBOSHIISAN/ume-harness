@@ -203,7 +203,7 @@ def generate_preview(settings_path: str, hook_paths: Dict[str, str]) -> str:
         f"  {settings_path}",
         "",
         "【追加される日本語通訳フック】",
-        "  PermissionRequest: 手動許可プロンプト直前の詳細解説",
+        "  PermissionRequest: 許可時の日本語説明（表示はCC・端末依存。macOS通知は別途明示選択）",
         f"     -> {hook_paths.get('PermissionRequest')}",
         "  PostToolUseFailure: エラー発生時の事実ベースの案内",
         f"     -> {hook_paths.get('PostToolUseFailure')}",

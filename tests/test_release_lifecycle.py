@@ -141,6 +141,25 @@ def test_installed_hooks_execute_from_prefix_with_space(tmp_path):
         assert event_name not in remaining_hooks
 
 
+@pytest.mark.parametrize("entry", ["missing", "nonexecutable", "directory"])
+def test_health_explicit_prefix_cannot_fall_back_to_payload_cli(tmp_path, entry):
+    """A missing/broken installed wrapper must not pass using the source CLI."""
+    prefix = tmp_path / "prefix"
+    cli = prefix / "bin/ume-harness"
+    cli.parent.mkdir(parents=True)
+    if entry == "nonexecutable":
+        cli.write_text("#!/bin/sh\nexit 0\n")
+        cli.chmod(0o644)
+    elif entry == "directory":
+        cli.mkdir()
+    result = _run([sys.executable, ROOT / "scripts/health_check.py",
+                   "--installed-dir", ROOT, "--prefix", prefix, "--json"])
+    report = json.loads(result.stdout)
+    check = next(c for c in report["checks"] if c["name"] == "CLI Executable Entrypoint")
+    assert check["passed"] is False, report
+    assert result.returncode != 0
+
+
 def test_health_check_import_probe_ignores_caller_working_directory(tmp_path):
     shadow_dir = tmp_path / "shadow"
     shadow_dir.mkdir()
