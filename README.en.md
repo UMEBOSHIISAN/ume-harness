@@ -16,18 +16,22 @@ corrections are also absent from the published v0.1.6 tag and distribution.
   <img src="assets/brand/ume-harness-lockup.svg" alt="UME-HARNESS" width="640">
 </p>
 
-> Start with an ordinary, imperfect request.
+> **After you ask AI for help, can you see what comes next?**
 >
-> Before work proceeds, make visible what may proceed without confirmation,
-> what needs confirmation, and what has not run yet.
+> UME helps organize the work. You decide.
 
-UME-HARNESS is a local work harness designed around Japanese-language requests
-for AI coding agents.
+You want to say “make this better,” while understanding what might change.
+UME-HARNESS is a local work harness designed around Japanese-language requests.
 
-It currently provides a standalone Human Layer preview CLI and a
-Claude Code Host Adapter for explaining and bounding local work.
+Before work proceeds, its preview CLI organizes a request into proposed work
+and questions to resolve.
 
 The standalone CLI presents a plan; it does not perform file operations.
+
+The standard Claude Code integration adds Japanese explanatory messages to
+permission requests and tool execution failures. Permission decisions follow
+Claude Code's existing settings; UME adds no execution restrictions in this mode.
+Additional restrictions require explicit `--managed` setup.
 Ease of adoption for non-engineers remains under evaluation.
 
 <p align="center">

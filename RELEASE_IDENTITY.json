@@ -31,11 +31,11 @@
     },
     "README.en.md": {
       "mode": "100644",
-      "sha256": "4707c7ad416fdd71f2d7ade78899728eb72ae4f9ac6c4324e7a7901e00137874"
+      "sha256": "d1816a49bb5761e9f6e026bb1b74de97d03cb62498ee9813aa4b3e04f81a6558"
     },
     "README.md": {
       "mode": "100644",
-      "sha256": "14881dd1f9e4ae4e8101cb669bbb75b852d0fc587798429f5747adbddbfbe43c"
+      "sha256": "8228d82769e3d4e41a31132937ef684322f66788a663cdead76633b83a948539"
     },
     "SECURITY.md": {
       "mode": "100644",
@@ -351,7 +351,7 @@
     }
   },
   "schema": "ume-harness-release-identity.v1",
-  "source_commit": "597bb5500a5d7ca5946d453ae56b87f27e925fde",
+  "source_commit": "fb43f85bc4cedbb57c43ee139a619c500ebe5ac4",
   "source_payload_count": 87,
-  "source_payload_root_sha256": "fe076a1f0004704b31146c91312925e9ba5447a815346b30dcfe000eb648e868"
+  "source_payload_root_sha256": "a31983dc740d2820889dcf771140be6cc84a25e95d331f5c555af635c6752b97"
 }
