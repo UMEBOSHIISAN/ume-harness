@@ -1,12 +1,12 @@
 # UME-HARNESS
 
-> Unpublished v0.1.7 candidate; final-candidate interactive acceptance is pending.
-> An earlier candidate is in local use. Local usability
-> feedback does not establish behavior of the public package without personal settings.
+> v0.1.7 Technical Preview. Standard connection is presentation-only; the
+> optional macOS permission notice is explicitly selected per process.
+> Host-dependent display and the unconnected surfaces in the Support Matrix remain limitations.
 
-[日本語](README.md) · Technical Preview · v0.1.7 (unpublished candidate) · [Previous v0.1.6](https://github.com/UMEBOSHIISAN/ume-harness/releases/tag/v0.1.6)
+[日本語](README.md) · [Technical Preview v0.1.7](https://github.com/UMEBOSHIISAN/ume-harness/releases/tag/v0.1.7) · [Previous v0.1.6](https://github.com/UMEBOSHIISAN/ume-harness/releases/tag/v0.1.6)
 
-This README describes the v0.1.7 development candidate. v0.1.6 verification is
+This README describes the published v0.1.7 release. v0.1.6 verification is
 identified as historical evidence. The integrated Pillow update and documentation
 corrections are also absent from the published v0.1.6 tag and distribution.
 
@@ -53,7 +53,7 @@ It is a local-work plane for making visible what may proceed without
 confirmation, what needs confirmation, and what has not run yet—without
 requiring a person to micromanage everything or hand over all control.
 
-## What changes in the v0.1.7 candidate
+## What changes in v0.1.7
 
 - Standard setup connects two Japanese presentation hooks for permission requests and failures. Claude Code retains native permission decisions for ordinary work.
 - Explanations avoid echoing raw command arguments and paths, and distinguish confirmation, refusal, and evaluation errors.
@@ -82,7 +82,7 @@ does not add work-execution or automatic-approval features.
 
 ## Current implementation
 
-This candidate has two distinct surfaces.
+This release has two distinct surfaces.
 
 ### Human Layer preview CLI
 
@@ -119,14 +119,21 @@ Mothership binds a human decision to bounded authority for one external action.
 The current public releases have no automatic runtime bridge. The dashed connection is not implemented.
 UME-HARNESS holds no external consequential authority and does not automatically invoke Mothership.
 
-## Preview Quick Start (published v0.1.6)
+## Preview Quick Start (published v0.1.7)
+
+First follow [release selection and installation](#install). These examples use
+the dedicated v0.1.7 prefix.
+
+For the currently published v0.1.7, use:
 
 ```bash
-git clone --branch v0.1.6 --depth 1 https://github.com/UMEBOSHIISAN/ume-harness.git
+git clone --branch v0.1.7 --depth 1 https://github.com/UMEBOSHIISAN/ume-harness.git
 cd ume-harness
 ./scripts/install.sh
+```
 
-~/.local/bin/ume-harness "Please summarize the material in this folder and improve the README if needed" \
+```bash
+"$HOME/.local/ume-harness-v0.1.7/bin/ume-harness" "Please summarize the material in this folder and improve the README if needed" \
   --context "The current folder contains three documents and README.md."
 ```
 
@@ -137,7 +144,7 @@ does not perform the requested file operations or consequential actions.
 Offline check without an LLM call:
 
 ```bash
-~/.local/bin/ume-harness --llm-output-file <path-to-json>
+"$HOME/.local/ume-harness-v0.1.7/bin/ume-harness" --llm-output-file <path-to-json>
 ```
 
 A historical input/output example is in [examples/basic_usage.md](examples/basic_usage.md).
@@ -161,34 +168,83 @@ Claude Code's decision under its native permission settings.
 
 ## Install and connect Claude Code
 
-### Install the candidate
+<a id="install"></a>
 
-Run the following from a verified v0.1.7 candidate checkout. The Quick Start above
-fetches the older v0.1.6; do not combine it with these candidate connection and
-diagnostic steps. The candidate is unpublished, so no public download command
-is available yet.
+### Select and install a published release
 
-```bash
-./scripts/install.sh
-```
+Prerequisites: Git, Bash and Python 3.9 or later; connecting requires Claude Code
+itself. Installation is physically verified on macOS arm64; see the
+[Support Matrix](SUPPORT_MATRIX.md) for other platforms.
 
-The default prefix is `~/.local`. If the command is not on `PATH`:
+Check the published tag and notes on [Releases](https://github.com/UMEBOSHIISAN/ume-harness/releases).
+`main` need not match a published release. Do not use an existing checkout's
+`git pull` or in-place `--force` replacement as the upgrade procedure.
 
-```bash
-export PATH="$HOME/.local/bin:$PATH"
-```
+On 2026-09-09, v0.1.7 is the recommended version. Check the tag, release name and
+publication status rather than relying only on Latest. For v0.1.6 or earlier, use that tag's README;
+the presentation-only default described here does not apply retroactively.
 
-To update from v0.1.6 to the v0.1.7 candidate, use the new source checkout to verify and
-remove the old release before installing the new one. Replacement of an existing
-installation, including same-version `--force`, is rejected before mutation.
-A fresh install into a separate prefix remains available. Uninstall also
-disconnects UME-owned hooks; default setup's preservation of managed connections
-does not mean they survive an update workflow that includes uninstall.
+**The following is the v0.1.7 procedure.** For another version, follow that release's
+instructions. Use an unused checkout directory and a separate
+prefix; the old payload, CLI and CC connection remain in place during installation.
 
 ```bash
-./scripts/uninstall.sh --version v0.1.6 --settings-path "${HOME}/.claude/settings.json" --yes
-./scripts/install.sh
+(
+  set -eu
+  UME_RELEASE_TAG=v0.1.7
+  UME_PREFIX="$HOME/.local/ume-harness-$UME_RELEASE_TAG"
+  git clone --branch "$UME_RELEASE_TAG" --single-branch \
+    https://github.com/UMEBOSHIISAN/ume-harness.git "ume-harness-$UME_RELEASE_TAG"
+  cd "ume-harness-$UME_RELEASE_TAG"
+  test "$(cat VERSION)" = "${UME_RELEASE_TAG#v}"
+  ./scripts/install.sh --prefix "$UME_PREFIX"
+  test -x "$UME_PREFIX/bin/ume-harness"
+  python3 ./scripts/health_check.py \
+    --installed-dir "$UME_PREFIX/lib/ume-harness/$UME_RELEASE_TAG" --prefix "$UME_PREFIX"
+)
 ```
+
+If any step fails, do not switch connections. Do not overwrite existing checkout
+or prefix directories. Keep the trusted source checkout for diagnosis/removal.
+Package installation does not change CC settings. Use the full CLI path to avoid
+accidentally selecting an older version on PATH:
+
+```bash
+"$HOME/.local/ume-harness-v0.1.7/bin/ume-harness" setup --preview
+```
+
+<a id="update"></a>
+
+### Existing users: verify installation, then switch connections
+
+Complete the separate-prefix installation above first. Pause CC work and avoid
+other writers to the same settings while switching. This example assumes the old
+CLI is `~/.local/bin/ume-harness` and settings are `~/.claude/settings.json`.
+Substitute the actual old CLI/settings first for a custom or local-trial install.
+
+```bash
+(
+  set -eu
+  UME_OLD_CLI="$HOME/.local/bin/ume-harness"
+  UME_NEW_CLI="$HOME/.local/ume-harness-v0.1.7/bin/ume-harness"
+  UME_SETTINGS="$HOME/.claude/settings.json"
+  test -x "$UME_OLD_CLI"
+  test -x "$UME_NEW_CLI"
+  "$UME_OLD_CLI" setup --disconnect --settings-path "$UME_SETTINGS"
+  "$UME_NEW_CLI" setup --yes --settings-path "$UME_SETTINGS"
+)
+```
+
+This explicitly selects presentation-only. To retain managed enforcement, add
+`--managed` to the new setup command. Default setup preserving existing managed
+hooks does not mean they survive a workflow that disconnects or uninstalls them.
+New users skip the old disconnect and run only the new setup below.
+
+Verify setting recognition and actual work in the target CC session; registration
+inventory alone does not prove event delivery. Restart CC if changes are not
+reflected. Keep the old prefix until the new installation works. On failure,
+inspect the current state; do not blindly restore a whole old settings backup or
+repeat setup to overwrite a conflict.
 
 ### Connect and disconnect Claude Code
 
@@ -196,10 +252,10 @@ Package installation does not modify existing Claude Code settings.
 Connection is explicit:
 
 ```bash
-ume-harness setup --yes
+"$HOME/.local/ume-harness-v0.1.7/bin/ume-harness" setup --yes
 ```
 
-The development candidate defaults to two presentation-only hooks: permission
+v0.1.7 defaults to two presentation-only hooks: permission
 requests and failures. Ordinary Python, search and external reads retain Claude
 Code's native permission handling; no UME execution gate is registered.
 **Standard connection does not enforce execution restrictions.** It neither
@@ -215,15 +271,9 @@ restores a removed PreToolUse. Disconnect first to switch managed to presentatio
 ### Migrate an older three-hook connection
 
 Installing or running default setup alone does not remove existing enforcement.
-Before uninstalling the old release, disconnect with its own CLI:
-
-```bash
-"$HOME/.local/bin/ume-harness" setup --disconnect
-```
-
-Then uninstall the old release, install the new release, and run
-`ume-harness setup --yes` without `--managed`. For a same-prefix connection-only
-change, run default setup immediately after disconnect. Keep custom prefixes and
+Follow [the update sequence](#update): old CLI disconnect, then new CLI setup.
+For a same-prefix connection-only change, run default setup immediately after
+disconnect. Omit `--managed` for presentation-only. Keep custom prefixes and
 settings paths consistent throughout. Open a new CC session and check that the
 registration diagnostic reports `presentation`; file inventory does not prove
 that a running host reloaded its settings.
@@ -232,10 +282,11 @@ Only UME-owned hooks are removed. Other hooks, native permissions, personal
 RUNBOOKs and local rules are neither disabled nor distributed. Environments with
 other gates are not promised identical behavior.
 
-Disconnect:
+The following disconnects the installed v0.1.7 connection itself. For migration
+from an older installation, use the old CLI disconnect in [the update sequence](#update), not this command.
 
 ```bash
-ume-harness setup --disconnect
+"$HOME/.local/ume-harness-v0.1.7/bin/ume-harness" setup --disconnect
 ```
 
 Setup/disconnect owns only exact matches for the three canonical hook commands
@@ -256,16 +307,71 @@ the short settings update, not ordinary CC tool execution.
 ### Diagnose and uninstall
 
 ```bash
-python3 ~/.local/lib/ume-harness/v0.1.7/scripts/health_check.py
-# or, from the repository
-python3 ./scripts/health_check.py
+(
+  set -eu
+  test -x "$HOME/.local/ume-harness-v0.1.7/bin/ume-harness"
+  python3 ./scripts/health_check.py \
+    --installed-dir "$HOME/.local/ume-harness-v0.1.7/lib/ume-harness/v0.1.7" \
+    --prefix "$HOME/.local/ume-harness-v0.1.7" \
+    --settings-path "$HOME/.claude/settings.json"
+)
+```
 
-./scripts/uninstall.sh --settings-path "${HOME}/.claude/settings.json" --yes
+Run this from the retained trusted source checkout. With an explicit `--prefix`,
+diagnostics require an executable CLI file at that prefix and do not substitute
+the payload CLI. Source/stage diagnostics without a prefix do not verify an
+installed wrapper. These diagnostics do not establish that a running CC session
+has reloaded its settings or that a live event will fire.
+
+Trial candidates can share VERSION while having different diagnostic
+file hashes. Remove an old trial using the retained trusted source checkout that
+installed that candidate, not an arbitrary newer source. If the matching trusted
+source is unavailable, stop; do not disable ownership checks or delete manually.
+
+Only when removing an installation, run the external trusted source uninstaller
+with the exact target prefix/version. Removal also disconnects that installation's
+owned hooks. The installed uninstaller cannot attest its own ownership:
+
+```bash
+./scripts/uninstall.sh --version v0.1.7 \
+  --prefix "$HOME/.local/ume-harness-v0.1.7" \
+  --settings-path "$HOME/.claude/settings.json" --yes
 ```
 
 Use the same custom settings path and prefix for setup and removal.
 Uninstall verifies owned hooks and payload, preserves unrelated Claude settings,
 and keeps `~/.ume-harness/state`.
+
+For an isolated failure after payload promotion but before wrapper creation,
+removing the cause, using the ownership-checked external uninstall, then ordinary
+installation successfully recovered. Same-version `--force` replacement is refused.
+This does not cover partial wrappers or unverified files. If ownership verification
+refuses removal, do not bypass it with manual deletion or `--force`.
+
+### Optional Japanese macOS notifications
+
+Default setup does not invoke a native notifier. Presentation depends on the CC
+host and terminal; Japanese text inside the CC 2.1.263 permission dialog is not
+guaranteed. To receive a separate fixed Japanese permission notice, install or
+use an existing [terminal-notifier](https://github.com/julienXX/terminal-notifier),
+manually allow its macOS notifications, then launch normally connected CC with:
+
+```bash
+UME_HARNESS_MACOS_NOTIFICATIONS=1 claude
+```
+
+This is a per-process opt-in. Launch a new CC without the variable to disable it.
+UME never installs the dependency or changes OS notification permissions. Only
+`/opt/homebrew/bin/terminal-notifier` and `/usr/local/bin/terminal-notifier` are
+considered, not arbitrary PATH or project executables. The prototype was observed
+on macOS26.6.2, notifier3.1.0 and CC2.1.263; final-package acceptance is separate.
+
+The fixed notice says CC needs a permission decision. It does not translate the
+operation, classify its safety, repeat commands/paths/content or approve anything.
+Choose allow/deny in the original CC dialog. Missing notifier, denied notification
+permission and notification errors add no UME execution denial; delivery is bounded
+to one second without retry. OS settings and Focus can hide notifications. No
+notification does not imply permission or safety.
 
 ### Diagnostic and presentation scope
 

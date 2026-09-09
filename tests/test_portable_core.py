@@ -613,8 +613,8 @@ def test_manifest_matches_explicit_release_closure():
     )
     check("generated identityがclosure内に1件だけ存在", release_payload.count(generated) == 1)
     check(
-        "MANIFEST.md のversionがcurrent candidateに一致",
-        f"# Release Manifest (ume-harness v{version} candidate)" in manifest_text,
+        "MANIFEST.md のversionがcurrent releaseに一致",
+        f"# Release Manifest (ume-harness v{version} Technical Preview)" in manifest_text,
     )
     check(
         "過去v0.1.6の実測test countをcurrent candidateの証拠に書き換えない",
@@ -624,7 +624,7 @@ def test_manifest_matches_explicit_release_closure():
     check(
         "配布security/support文書のversionがcurrent releaseに一致",
         f"v{version} attests the explicit protected-runtime closure" in security_text
-        and f"# Support Matrix (v{version} candidate)" in support_matrix_text
+        and f"# Support Matrix (v{version} Technical Preview)" in support_matrix_text
         and "Historical baseline: v0.1.6 generated public release mirror / 2026-09-05" in support_matrix_text,
     )
 
@@ -863,11 +863,11 @@ def test_three_plane_public_truth():
         and "https://github.com/UMEBOSHIISAN/ume-harness/releases/tag/v0.1.6" in english,
     )
     check(
-        "README identifies the current candidate without claiming a published tag",
-        f"v{version}（未公開候補）" in readme
-        and f"v{version} (unpublished candidate)" in english
-        and f"https://github.com/UMEBOSHIISAN/ume-harness/releases/tag/v{version}" not in readme
-        and f"https://github.com/UMEBOSHIISAN/ume-harness/releases/tag/v{version}" not in english,
+        "README identifies the current published release while retaining Technical Preview wording",
+        f"Technical Preview v{version}" in readme
+        and f"Technical Preview v{version}" in english
+        and f"https://github.com/UMEBOSHIISAN/ume-harness/releases/tag/v{version}" in readme
+        and f"https://github.com/UMEBOSHIISAN/ume-harness/releases/tag/v{version}" in english,
     )
     check(
         "README and NOTICE distinguish project MIT code from the OFL font",

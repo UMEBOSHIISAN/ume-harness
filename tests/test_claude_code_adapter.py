@@ -2028,10 +2028,12 @@ def test_permission_request_hook() -> None:
     check("PermissionRequest stdout is JSON", proc.stdout.lstrip().startswith("{"), f"stdout={proc.stdout!r}")
     output = json.loads(proc.stdout)
     check("PermissionRequest outputs structured card", "ここからPCの外へ出ます" in output["systemMessage"] and "外部送信" in output["systemMessage"])
-    notification = output.get("terminalSequence", "")
+    terminal_sequence = output.get("terminalSequence", "")
+    notification = terminal_sequence.split("\x07", 1)[0] + "\x07"
     notification_prefix = "\x1b]777;notify;ume-harness;"
     check("PermissionRequest emits an official terminal notification", notification.startswith(notification_prefix) and notification.endswith("\x07"))
     check("PermissionRequest terminal notification is Japanese", "🇯🇵" in notification and "外部送信" in notification)
+    check("PermissionRequest also emits a bounded Japanese window title", "\x1b]2;" in terminal_sequence and "外部送信" in terminal_sequence.split("\x1b]2;", 1)[1])
     notification_body = notification[len(notification_prefix):-1]
     check("PermissionRequest notification contains no injected control bytes", all(ord(char) >= 32 and not 127 <= ord(char) <= 159 for char in notification_body))
     hostile_notification = permission_hook._terminal_notification("🇯🇵 危険;\x1b]777;notify;attacker;injected\x07\x9b")

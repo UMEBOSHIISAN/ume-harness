@@ -15,7 +15,7 @@ import sys
 from typing import Any
 
 
-EXPECTED_ROOT_DIGEST = "d8fa0503c25ff9249c7423170ac84f112f26d6b80e79ee48e86711b8b94d6f2b"
+EXPECTED_ROOT_DIGEST = "6bf4573209f791117e145ac96ee544410827cee0a3a44626be168ee070bede65"
 IDENTITY_ALGORITHM = "sha256-canonical-path-map-v1"
 IDENTITY_SELF_EXCLUSIONS = frozenset({"scripts/health_check.py"})
 MANDATORY_RELEASE_FILES = frozenset({
@@ -246,6 +246,7 @@ def verify_owned_install(installed_dir: str) -> tuple[bool, str]:
 def run_diagnostics(installed_dir: str, prefix_dir: str | None = None, json_output: bool = False,
                     settings_path: str | None = None, state_dir: str | None = None) -> int:
     installed_dir = os.path.abspath(installed_dir)
+    explicit_prefix = prefix_dir is not None
     if prefix_dir:
         prefix_dir = os.path.abspath(prefix_dir)
     else:
@@ -285,8 +286,11 @@ def run_diagnostics(installed_dir: str, prefix_dir: str | None = None, json_outp
 
     cli_candidates = [
         os.path.join(prefix_dir, "bin", "ume-harness"),
-        os.path.join(installed_dir, "bin", "ume-harness"),
     ]
+    # Source/stage diagnostics may use their own CLI. An explicit installation
+    # prefix must prove its wrapper exists, not silently inspect another CLI.
+    if not explicit_prefix:
+        cli_candidates.append(os.path.join(installed_dir, "bin", "ume-harness"))
     cli_found = next(
         (path for path in cli_candidates if os.path.isfile(path) and os.access(path, os.X_OK)),
         None,

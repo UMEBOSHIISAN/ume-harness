@@ -14,7 +14,7 @@
     "deferred_reason": "Gemma has no v0 CLI route. Historical semantic runs are recorded in PHASE4_HOLD.md, but their raw evidence is not in the current release closure, so no current numeric model-performance claim is made.",
     "semantic_evidence": "CURRENT_RELEASE_GRADE_RESULT_UNKNOWN — tests/case1_v2_sampling_contract.md defines the measurement contract; fresh raw evidence is required for a new support claim.",
     "claude_host_evidence": "STATIC_ADAPTER_TESTED / PHYSICAL_INTERACTIVE_CLAUDE_3HOOK_E2E_DEMONSTRATED — test-profile command mapping, expected-state/out-of-band, and autonomous Stop host wiring are not implemented.",
-    "note": "Development candidate: bin/ume-harness is the CLI preview entrypoint. Default setup connects two presentation hooks; explicit setup --managed adds PreToolUse enforcement. Existing managed registration is preserved by default setup. Disconnect and uninstall own only exact canonical hook commands. Fresh interactive candidate acceptance is pending.",
+    "note": "v0.1.7 Technical Preview: bin/ume-harness is the CLI preview entrypoint. Default setup connects two presentation hooks; explicit setup --managed adds PreToolUse enforcement. Existing managed registration is preserved by default setup. Disconnect and uninstall own only exact canonical hook commands. Live host display and permission behavior remain subject to the stated terminal and Claude Code boundaries.",
     "portability_trial": "macOS arm64 isolated lifecycle demonstrated; Linux/POSIX expected but unverified; Windows native unsupported."
   },
   "release_identity": {
