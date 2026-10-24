@@ -1,8 +1,8 @@
-# Development candidate manifest — thin Japanese decision support
+# v0.2.0 release manifest — thin Japanese decision support
 
-Unreleased engineering candidate, intentionally different from published v0.1.7.
+Technical Preview v0.2.0, intentionally incompatible with v0.1.7 managed features.
 Only ume-harness-engineering is canonical; public ume-harness is a generated
-one-way mirror. No push, publication or live settings migration is implied.
+one-way mirror. Installation never migrates live settings automatically.
 
 package_manifest.json defines release.payload, install_payload and the immutable
 release_identity.closure. release_promote.py stages only these bytes and does not
@@ -11,11 +11,12 @@ publish or reverse-sync. Existing installations are not overwritten, even with
 
 ## Generated release closure
 
-69 files including one generated RELEASE_IDENTITY.json.
+70 files including one generated RELEASE_IDENTITY.json.
 
 ```
 .gitignore
 .github/workflows/ci.yml
+CHANGELOG.md
 LICENSE
 MANIFEST.md
 NOTICE
@@ -85,7 +86,7 @@ ux/japanese-human-layer/prompts/intent_interpreter.md
 ux/japanese-human-layer/tests/test_human_layer.py
 ```
 
-## Installed candidate
+## Installed v0.2.0
 
 28 files; 27 identity members.
 Only the health checker itself is excluded from its recursive root calculation;
@@ -94,8 +95,8 @@ Current root/checker anchors are frozen in scripts/health_check.py and
 scripts/release_promote.py after implementation. Historical anchors remain for
 ownership diagnostics, not as current feature claims.
 
--> root: 76a8a54332f8b50face686cd5e8ebef45da17bcf3e493d8602697f1f5aa5425e
--> checker: 67e225616217a9e00205c717e97cf14a44f48f1751407db5bbcac07535f93a55
+-> root: 44180c01f105bb17d8189e43cb78643a0c897f01590455b6e1d4d02f806ee069
+-> checker: 7fe93582cd63a481d970aa15667e395212b4a1cbc96c7eb1fea0a0b58b319069
 
 The payload contains preview/meaning, the Japanese language pack, two presentation
 hooks and ownership/install diagnostics. Custom PreToolUse/Lease/token/Stop and
@@ -112,4 +113,4 @@ python3 -m pytest -q -p no:cacheprovider tests ux/japanese-human-layer/tests
 Fresh isolated lifecycle tests cover install -> presentation setup -> offline
 preview -> identity/wrapper proof -> disconnect -> uninstall. Source test counts
 are reported against their exact tree. f999276 physical observations are a
-separate historical baseline in SUPPORT_MATRIX.md, not thin-candidate acceptance.
+separate historical baseline in SUPPORT_MATRIX.md, not v0.2.0 real-host acceptance.

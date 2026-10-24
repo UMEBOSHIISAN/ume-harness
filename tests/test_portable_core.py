@@ -190,24 +190,24 @@ def test_manifest_matches_explicit_release_closure():
     )
     check("generated identityがclosure内に1件だけ存在", release_payload.count(generated) == 1)
     check(
-        "current candidate identity is explicit and VERSION stays package-compatible",
-        "# Development candidate manifest — thin Japanese decision support" in manifest_text
-        and "Unreleased engineering candidate, intentionally different from published v0.1.7." in manifest_text
+        "current release identity is explicit and VERSION stays package-compatible",
+        "# v0.2.0 release manifest — thin Japanese decision support" in manifest_text
+        and "Technical Preview v0.2.0, intentionally incompatible with v0.1.7 managed features." in manifest_text
         and version == package_manifest["version"],
     )
     check(
         "MANIFEST keeps publication and migration boundaries explicit",
-        "No push, publication or live settings migration is implied." in manifest_normalized
+        "Installation never migrates live settings automatically." in manifest_normalized
         and "Only ume-harness-engineering is canonical" in manifest_normalized
         and "generated one-way mirror" in manifest_normalized,
     )
     check(
         "security/support documents describe thin behavior and separate historical evidence",
-        "This policy describes the unreleased thin candidate" in security_normalized
+        "This policy describes the v0.2.0 Technical Preview" in security_normalized
         and "UME is a non-executing preview plus two presentation hooks." in security_normalized
-        and "# Support Matrix — unreleased thin candidate" in support_normalized
+        and "# Support Matrix — v0.2.0 Technical Preview" in support_normalized
         and "## f999276 physical baseline" in support_normalized
-        and "Old managed E2E does not verify a retired feature in this changed candidate." in support_normalized,
+        and "Old managed E2E does not verify a retired feature in v0.2.0." in support_normalized,
     )
 
 
@@ -217,9 +217,9 @@ def test_positioning_assets_are_public_only_and_bounded():
         package_manifest = json.load(f)
     release_payload = package_manifest["release"]["payload"]
     install_payload = package_manifest["install_payload"]
-    assert package_manifest["version"] == "0.1.7"
+    assert package_manifest["version"] == "0.2.0"
     with open(os.path.join(pkg_root, "VERSION"), encoding="utf-8") as f:
-        assert f.read().strip() == "0.1.7"
+        assert f.read().strip() == "0.2.0"
 
     for relative in POSITIONING_ASSETS:
         assert os.path.isfile(os.path.join(pkg_root, relative)), relative

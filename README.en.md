@@ -4,10 +4,10 @@
   <img src="assets/brand/ume-harness-lockup.svg" alt="UME-HARNESS — Japanese decision support" width="840">
 </p>
 
-> Unreleased engineering candidate: thin Japanese decision support.
-> Main is an unreleased source candidate, different from tagged v0.1.7. Live installation is separate.
+> v0.2.0 Technical Preview: thin Japanese decision support, with breaking changes from v0.1.7.
+> Explicitly disconnect old hooks and use a separate prefix. Personal settings are never migrated automatically.
 
-[日本語](README.md) · [Published releases](https://github.com/UMEBOSHIISAN/ume-harness/releases)
+[日本語](README.md) · [Changelog](CHANGELOG.md) · [Published releases](https://github.com/UMEBOSHIISAN/ume-harness/releases)
 
 UME organizes vague requests into a pre-work preview and explains the decisions
 still needed. The host owns execution, permissions, sandboxing, worktrees,
@@ -32,7 +32,7 @@ These are explanatory illustrations, not measured model quality or a native perm
 - Exact connection ownership, concurrent-update detection, explicit-prefix wrapper
   proof and immutable package-byte checks.
 
-The candidate retires custom PreToolUse/managed/Lease enforcement, approval-token
+v0.2.0 retires custom PreToolUse/managed/Lease enforcement, approval-token
 storage, Stop state, shell execution policy and notifier/OSC routes.
 `setup --managed` exits nonzero before settings changes. No OS sandbox, executor,
 external authority or automatic Mothership invocation is provided by UME.
@@ -41,11 +41,11 @@ external authority or automatic Mothership invocation is provided by UME.
 
 Requires Git, Bash and Python 3.9+. Online interpretation needs an authenticated
 compatible Claude CLI and network access; requests/context are sent to Claude.
-For published versions follow their own tag instructions.
+Check out the [v0.2.0 tag](https://github.com/UMEBOSHIISAN/ume-harness/tree/v0.2.0) before running these commands.
 
 ```bash
-./scripts/install.sh --prefix "$HOME/.local/ume-harness-thin-candidate"
-"$HOME/.local/ume-harness-thin-candidate/bin/ume-harness" \
+./scripts/install.sh --prefix "$HOME/.local/ume-harness-0.2.0"
+"$HOME/.local/ume-harness-0.2.0/bin/ume-harness" \
   "Read this document and summarize it; do not change or post anything."
 ```
 
@@ -58,7 +58,7 @@ version or quality guarantee. Invalid/incomplete output stops as a processing
 error; valid null work type is accepted. Offline input avoids inference:
 
 ```bash
-"$HOME/.local/ume-harness-thin-candidate/bin/ume-harness" --llm-output-file input.json
+"$HOME/.local/ume-harness-0.2.0/bin/ume-harness" --llm-output-file input.json
 ```
 
 --json adds debug data after the report, not a pure versioned JSON API.
@@ -66,7 +66,7 @@ required_human_approvals names preview decision candidates, not issued authority
 
 ### Explicit offline handoff
 
-This unreleased candidate adds `--handoff-json`, a single
+v0.2.0 adds `--handoff-json`, a single
 `ume.preview-handoff.v0` JSON document from the existing normalization path.
 Both `--request` and `--llm-output-file` are required. It does not invoke a model,
 collect an approval or execute an operation.
@@ -95,8 +95,8 @@ a fresh installed E2E of the later input-read fix remains unverified.
 ## Connect and migrate
 
 ```bash
-"$HOME/.local/ume-harness-thin-candidate/bin/ume-harness" setup --preview
-"$HOME/.local/ume-harness-thin-candidate/bin/ume-harness" setup --yes
+"$HOME/.local/ume-harness-0.2.0/bin/ume-harness" setup --preview
+"$HOME/.local/ume-harness-0.2.0/bin/ume-harness" setup --yes
 ```
 
 New entries are the two explanation hooks with native 3-second timeouts. Existing
@@ -118,7 +118,7 @@ removed. Deleting an old hook first can leave a blocking registration.
 ```bash
 "/absolute/path/to/old-prefix/bin/ume-harness" setup --disconnect \
   --settings-path "/absolute/path/to/target-settings.json"
-"$HOME/.local/ume-harness-thin-candidate/bin/ume-harness" setup --yes \
+"$HOME/.local/ume-harness-0.2.0/bin/ume-harness" setup --yes \
   --settings-path "/absolute/path/to/target-settings.json"
 ```
 
@@ -128,7 +128,7 @@ unrestricted host; other sources/hooks/native policy may apply. Do not force a
 replacement or restore an entire stale settings backup.
 
 ```bash
-"$HOME/.local/ume-harness-thin-candidate/bin/ume-harness" setup --disconnect
+"$HOME/.local/ume-harness-0.2.0/bin/ume-harness" setup --disconnect
 ```
 
 Only exact owned commands are modified. A stable nonblocking lock and pre/post-save
@@ -139,10 +139,10 @@ A race window with noncooperating writers remains; avoid concurrent settings edi
 
 ```bash
 python3 scripts/health_check.py \
-  --installed-dir "$HOME/.local/ume-harness-thin-candidate/lib/ume-harness/v0.1.7" \
-  --prefix "$HOME/.local/ume-harness-thin-candidate" \
+  --installed-dir "$HOME/.local/ume-harness-0.2.0/lib/ume-harness/v0.2.0" \
+  --prefix "$HOME/.local/ume-harness-0.2.0" \
   --settings-path "$HOME/.claude/settings.json"
-./scripts/uninstall.sh --prefix "$HOME/.local/ume-harness-thin-candidate" --yes
+./scripts/uninstall.sh --prefix "$HOME/.local/ume-harness-0.2.0" --yes
 ```
 
 Use trusted matching source. An explicit prefix requires its actual wrapper;
@@ -170,8 +170,8 @@ and [generator](assets/readme/source/generate_ume_harness_assets.py) retain the 
 
 Only ume-harness-engineering is canonical. Public ume-harness is a generated
 one-way mirror. [package_manifest.json](package_manifest.json) defines the closure;
-[MANIFEST.md](MANIFEST.md) lists it. This candidate is unreleased; retained VERSION
-metadata does not establish published-v0.1.7 compatibility.
+[MANIFEST.md](MANIFEST.md) lists it. v0.2.0 remains a Technical Preview; it does
+not promise v0.1.7 compatibility or superiority over the host alone.
 
 Official [CLI](https://code.claude.com/docs/en/cli-reference),
 [permissions](https://code.claude.com/docs/en/permissions),

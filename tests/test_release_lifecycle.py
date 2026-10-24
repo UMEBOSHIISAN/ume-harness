@@ -22,7 +22,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "v0.1.7"
+VERSION = "v0.2.0"
 CANONICAL_REPOSITORY = "https://github.com/UMEBOSHIISAN/ume-harness-engineering.git"
 PUBLIC_MIRROR_REPOSITORY = "https://github.com/UMEBOSHIISAN/ume-harness.git"
 OWNED_EVENTS = ("PermissionRequest", "PostToolUseFailure")

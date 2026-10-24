@@ -1,4 +1,4 @@
-# Authority boundary — thin development candidate
+# Authority boundary — v0.2.0 Technical Preview
 
 UME produces a proposal and presentation only. It does not issue or consume
 permission, approval tokens, leases or external authority. Host permissions,
