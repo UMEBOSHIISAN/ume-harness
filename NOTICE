@@ -8,6 +8,9 @@ crontab/pm2固有設定等）を除去した上で、汎用の意思決定ロジ
 
 ## 由来
 
+以下は当初の抽出元を含む由来です。decision_state.pyとstop_adapter.pyは
+v0.2.0の配布対象から除外されており、現行機能ではありません。
+
 - `contracts/authority_contract.md` / `contracts/tool_policy.md`: 個人環境の
   Authority Contract（5 Tier x 5 SideEffect決定モデル）を一般化。
 - `runtime/tool_policy.py`: 個人実装（unified_tool_classifier.py等）の分類ロジックを
@@ -32,9 +35,10 @@ Noto Sans JP Font Softwareを同梱する。
 - license: SIL Open Font License 1.1
 - license text: `assets/readme/source/fonts/OFL-1.1.txt`
 
-このfontはREADME asset生成用であり、40-file install payloadには含まれない。
+このfontはREADME asset生成用であり、install payloadには含まれない。
 
 ## 監修・検証プロセス
 
-Structural Gate（単体テスト全通）および Semantic Gate（実LLM Sampling Contract）による
-実測検証を実施済み。詳細は `MANIFEST.md`・`SUPPORT_MATRIX.md`・`tests/case1_v2_sampling_contract.md` を参照。
+現在の配布byte identityと回帰テストの範囲は `MANIFEST.md`・`SUPPORT_MATRIX.md` を参照。
+過去のsemantic記録には隔離対象があり、現行releaseの一般的なモデル精度を証明しません。
+`tests/case1_v2_sampling_contract.md` は測定契約であり、新しい生データによる実測結果ではありません。

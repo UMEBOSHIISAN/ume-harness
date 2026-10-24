@@ -4,10 +4,10 @@
   <img src="assets/brand/ume-harness-lockup.svg" alt="UME-HARNESS — Japanese decision support" width="840">
 </p>
 
-> 開発候補：日本語の判断支援へ縮小しています。公開済みv0.1.7とは動作が異なります。
-> mainは未リリースのソース候補です。通常設定への導入は別途行います。
+> v0.2.0 Technical Preview：日本語の判断支援へ縮小しました。v0.1.7との互換性変更を含みます。
+> 旧接続は明示的に切断し、別prefixへ導入してください。通常設定への自動導入は行いません。
 
-[English](README.en.md) · [公開Releases](https://github.com/UMEBOSHIISAN/ume-harness/releases)
+[English](README.en.md) · [変更履歴](CHANGELOG.md) · [公開Releases](https://github.com/UMEBOSHIISAN/ume-harness/releases)
 
 **必要な判断を、短く、正確な日本語で返す。**
 
@@ -40,15 +40,15 @@ terminal-notifierとOSC通知は配布しません。`setup --managed` は設定
 [Support Matrix](SUPPORT_MATRIX.md)に根拠と境界を記載しています。
 GitHubの人気やXの投稿を品質や安全性の証明には使いません。
 
-## 開発候補を専用prefixで試す
+## v0.2.0を専用prefixで試す
 
 前提はGit、Bash、Python 3.9以降です。オンライン解析には認証済みの対応Claude CLIと
 ネットワーク接続が必要で、依頼文とcontextをClaudeへ送ります。
-公開版には[選択したtagの手順](https://github.com/UMEBOSHIISAN/ume-harness/releases)を使います。
+[v0.2.0のtag](https://github.com/UMEBOSHIISAN/ume-harness/tree/v0.2.0)を取得して実行してください。
 
 ```bash
-./scripts/install.sh --prefix "$HOME/.local/ume-harness-thin-candidate"
-"$HOME/.local/ume-harness-thin-candidate/bin/ume-harness" \
+./scripts/install.sh --prefix "$HOME/.local/ume-harness-0.2.0"
+"$HOME/.local/ume-harness-0.2.0/bin/ume-harness" \
   "この資料を読んで要点をまとめて。変更や投稿はしないで" \
   --context "テスト用資料だけがある作業フォルダです。"
 ```
@@ -62,7 +62,7 @@ skills/commands・ブラウザ・session保存の無効化を指定します。�
 `work_type: null` は受け付けます。オフライン確認はLLMを呼びません。
 
 ```bash
-"$HOME/.local/ume-harness-thin-candidate/bin/ume-harness" --llm-output-file input.json
+"$HOME/.local/ume-harness-0.2.0/bin/ume-harness" --llm-output-file input.json
 ```
 
 `--json` は説明に続くデバッグ情報で、純粋なversioned JSON APIではありません。
@@ -70,7 +70,7 @@ skills/commands・ブラウザ・session保存の無効化を指定します。�
 
 ### 明示的なオフライン引き継ぎ
 
-この未リリース候補の `--handoff-json` は、既存のnormalize結果を
+v0.2.0の `--handoff-json` は、既存のnormalize結果を
 `ume.preview-handoff.v0` の単一JSONとして返します。`--request` と
 `--llm-output-file` が必須で、モデル呼出し・承認入力・操作実行は行いません。
 入力は128 KiB以内の通常ファイルに限定し、途中のディレクトリを含むsymlinkと
@@ -84,7 +84,7 @@ FIFOなどの特殊ファイルは拒否します。必要なPOSIXの読取機�
 依頼文・解釈入力のhashは同じ入力の照合用です。文章と操作対象の意味が一致する証明や
 権限にはなりません。`--json` との併用は拒否します。Mothership側の明示的な入口が
 具体的操作の判断・実行報告・結果保存を担当するローカル接続候補です。
-公開版への自動接続、実canary、初見の人による受入は未実施です。
+Mothershipへの自動接続はありません。実canary、初見の人による受入は未実施です。
 
 <img src="assets/readme/ja/ume-stack-responsibility.svg" alt="UMEは整理とJSON出力、ホストは権限と実行、Mothership候補は具体的操作の判断と保存結果の再読を担当" width="640">
 
@@ -96,8 +96,8 @@ Harness `2da9a0a`とMothership runtime `ccf53f5`の組み合わせを記載し�
 ## 接続と旧managedからの移行
 
 ```bash
-"$HOME/.local/ume-harness-thin-candidate/bin/ume-harness" setup --preview
-"$HOME/.local/ume-harness-thin-candidate/bin/ume-harness" setup --yes
+"$HOME/.local/ume-harness-0.2.0/bin/ume-harness" setup --preview
+"$HOME/.local/ume-harness-0.2.0/bin/ume-harness" setup --yes
 ```
 
 新規接続は説明2本のみで、他hookやnative権限は保持します。新規timeoutは3秒です。
@@ -119,7 +119,7 @@ Harness `2da9a0a`とMothership runtime `ccf53f5`の組み合わせを記載し�
 ```bash
 "/absolute/path/to/old-prefix/bin/ume-harness" setup --disconnect \
   --settings-path "/absolute/path/to/target-settings.json"
-"$HOME/.local/ume-harness-thin-candidate/bin/ume-harness" setup --yes \
+"$HOME/.local/ume-harness-0.2.0/bin/ume-harness" setup --yes \
   --settings-path "/absolute/path/to/target-settings.json"
 ```
 
@@ -129,7 +129,7 @@ Harness `2da9a0a`とMothership runtime `ccf53f5`の組み合わせを記載し�
 所有確認できない場合は、強制置換や古い設定バックアップの丸ごと復元で回避しません。
 
 ```bash
-"$HOME/.local/ume-harness-thin-candidate/bin/ume-harness" setup --disconnect
+"$HOME/.local/ume-harness-0.2.0/bin/ume-harness" setup --disconnect
 ```
 
 設定更新は完全一致した所有commandだけが対象です。固定 `.ume-harness.lock` による
@@ -140,10 +140,10 @@ Harness `2da9a0a`とMothership runtime `ccf53f5`の組み合わせを記載し�
 
 ```bash
 python3 scripts/health_check.py \
-  --installed-dir "$HOME/.local/ume-harness-thin-candidate/lib/ume-harness/v0.1.7" \
-  --prefix "$HOME/.local/ume-harness-thin-candidate" \
+  --installed-dir "$HOME/.local/ume-harness-0.2.0/lib/ume-harness/v0.2.0" \
+  --prefix "$HOME/.local/ume-harness-0.2.0" \
   --settings-path "$HOME/.claude/settings.json"
-./scripts/uninstall.sh --prefix "$HOME/.local/ume-harness-thin-candidate" --yes
+./scripts/uninstall.sh --prefix "$HOME/.local/ume-harness-0.2.0" --yes
 ```
 
 信頼できるsourceから診断します。明示prefixは実際のwrapperを検査し、別CLIへfallbackしません。
@@ -158,7 +158,7 @@ byte identityは署名認証ではなく、信頼したcanonical/generated relea
 実機測定はmacOS arm64 / Claude Code 2.1.309 / 合成データの限定条件です。
 対話PermissionRequest、実MCP実行、他OS、日本語精度・導入容易性は未確認です。
 Native hookは末尾の `}` がない出力などをplain textとして扱い、`onFailure: block` でも
-不正出力をすべてblockしません。この候補の2hookは説明専用で、権限制御には使いません。
+不正出力をすべてblockしません。v0.2.0の2hookは説明専用で、権限制御には使いません。
 
 ```bash
 python3 -m pytest -q -p no:cacheprovider tests ux/japanese-human-layer/tests
@@ -170,8 +170,8 @@ python3 -m pytest -q -p no:cacheprovider tests ux/japanese-human-layer/tests
 
 `ume-harness-engineering` がcanonical sourceです。public `ume-harness` は一方向の生成mirrorで、
 公開側の手修正・逆同期はサポートしません。[package_manifest.json](package_manifest.json)が
-配布closure、[MANIFEST.md](MANIFEST.md)が表示一覧です。この候補は未リリースで、VERSION表記は
-公開v0.1.7との互換性の保証になりません。
+配布closure、[MANIFEST.md](MANIFEST.md)が表示一覧です。v0.2.0はTechnical Previewであり、
+v0.1.7との互換性やホスト単体に対する優位性を保証しません。
 
 公式仕様：[CLI](https://code.claude.com/docs/en/cli-reference)、
 [permissions](https://code.claude.com/docs/en/permissions)、[hooks](https://code.claude.com/docs/en/hooks)、

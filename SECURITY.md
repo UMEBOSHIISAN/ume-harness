@@ -1,8 +1,8 @@
 # Security policy
 
 ume-harness-engineering is the sole canonical source. Public ume-harness is a
-one-way generated release mirror. This policy describes the unreleased thin
-candidate; published versions retain the policy/behavior at their tags.
+one-way generated release mirror. This policy describes the v0.2.0 Technical Preview;
+earlier versions retain the policy/behavior at their tags.
 
 ## Report privately
 
@@ -37,5 +37,4 @@ by this package. Model semantic quality/omission, host sandbox behavior, other
 systems and independently modified same-UID code are outside this package's scope.
 
 Maintainers assess reproducible impact against canonical source and coordinate a
-fix/disclosure privately. No response/fix SLA is promised. No push/publication or
-security guarantee is implied by this development policy.
+fix/disclosure privately. No response/fix SLA is promised. Publishing this policy does not provide a security guarantee.

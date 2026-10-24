@@ -1,6 +1,6 @@
 {
   "name": "ume-harness",
-  "version": "0.1.7",
+  "version": "0.2.0",
   "description": "Japanese decision-support preview and redacted Claude Code presentation. Host-native execution, permissions, sandbox, worktrees, lifecycle and notifications remain outside UME.",
   "license": "MIT",
   "repository": "https://github.com/UMEBOSHIISAN/ume-harness-engineering",
@@ -13,8 +13,8 @@
     ],
     "deferred_reason": "Gemma has no v0 CLI route. Historical semantic runs are recorded in PHASE4_HOLD.md, but their raw evidence is not in the current release closure, so no current numeric model-performance claim is made.",
     "semantic_evidence": "CURRENT_RELEASE_GRADE_RESULT_UNKNOWN — tests/case1_v2_sampling_contract.md defines the measurement contract; fresh raw evidence is required for a new support claim.",
-    "claude_host_evidence": "THIN_CANDIDATE_PRESENTATION_ONLY — historical f999276 managed host measurements do not verify retired features.",
-    "note": "Unreleased engineering candidate: two presentation hooks; managed/Lease/token/Stop/notifications retired. Explicit old-prefix disconnect required; foreign settings untouched.",
+    "claude_host_evidence": "THIN_PRESENTATION_ONLY — historical f999276 managed host measurements do not verify retired features; v0.2.0 release lifecycle does not establish interactive host acceptance.",
+    "note": "Technical Preview v0.2.0: two presentation hooks; managed/Lease/token/Stop/notifications retired. Explicit old-prefix disconnect required; foreign settings untouched.",
     "portability_trial": "macOS arm64 isolated lifecycle demonstrated; Linux/POSIX expected but unverified; Windows native unsupported."
   },
   "release_identity": {
@@ -58,6 +58,7 @@
     "payload": [
       ".gitignore",
       ".github/workflows/ci.yml",
+      "CHANGELOG.md",
       "LICENSE",
       "MANIFEST.md",
       "NOTICE",
@@ -219,6 +220,7 @@
     ],
     "meta": [
       "VERSION",
+      "CHANGELOG.md",
       "NOTICE",
       "SUPPORT_MATRIX.md",
       "MANIFEST.md",

@@ -1,9 +1,9 @@
-# Support Matrix — unreleased thin candidate
+# Support Matrix — v0.2.0 Technical Preview
 
-Published v0.1.7/old v0.1.6 behavior belongs to its own tag. The development
-candidate removes custom execution enforcement; baseline evidence is separate.
+Published v0.1.7/old v0.1.6 behavior belongs to its own tag. v0.2.0 removes
+custom execution enforcement; baseline evidence is separate.
 
-| Surface | Candidate contract | Boundary |
+| Surface | v0.2.0 contract | Boundary |
 |---|---|---|
 | Japanese preview | Non-executing report, clarification-impact and compound-action meaning | Deterministic regressions; general interpretation quality/usability unknown |
 | Online model transport | Native safe mode, empty tools/MCP, strict JSON consumer | f999 equivalent init observed empty tools/MCP; no normal-host inventory claim |
@@ -39,7 +39,7 @@ macOS arm64; Claude Code2.1.309; resolved model claude-sonnet-5-5.
 
 Raw artifacts and independent review are retained in the assigned local task
 record, outside public release. Old managed E2E does not verify a retired feature
-in this changed candidate. Native command hooks accept some malformed output as
+in v0.2.0. Native command hooks accept some malformed output as
 plain text: onFailure:block does not block every invalid output. Current UME
 hooks are presentation-only and must not enforce authority.
 

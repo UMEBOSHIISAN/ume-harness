@@ -1,4 +1,4 @@
-# Claude Code presentation adapter — unreleased thin candidate
+# Claude Code presentation adapter — v0.2.0 Technical Preview
 
 The active adapter registers only PermissionRequest and PostToolUseFailure.
 It returns bounded Japanese systemMessage/failure context, never native permission
@@ -24,6 +24,6 @@ Native stdout treats truncated objects lacking a closing brace as plain text;
 these hooks must not serve as an authorization gate.
 
 f999276 synthetic real-host evidence was collected on macOS arm64 / Claude2.1.309;
-its managed enforcement is historical and no longer a candidate feature.
+its managed enforcement is historical and not a v0.2.0 feature.
 Interactive PermissionRequest UI/readability and general host/platform behavior
 remain unverified. Source tests/direct hook calls do not prove that UI.

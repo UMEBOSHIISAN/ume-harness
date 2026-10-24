@@ -9,17 +9,21 @@
       "mode": "100644",
       "sha256": "dab1aa08438b7d381b4687d1f4c97bc2a53f8f1a33c0737ce16aa5160dbb39a3"
     },
+    "CHANGELOG.md": {
+      "mode": "100644",
+      "sha256": "883082287079db0024ed1f6fc43cbf44eef3d8ccd8297f55efa3f276cced81b4"
+    },
     "LICENSE": {
       "mode": "100644",
       "sha256": "5d32a46056139d9cabc02d3b4a19686146c017d67be1ac85e9fe3644ad5027bf"
     },
     "MANIFEST.md": {
       "mode": "100644",
-      "sha256": "6ff6e2744fdcce0a710638a673da33e4ace26918bd99adc8c0dc77bfde433b38"
+      "sha256": "a263974d9c138e480ecdf66d15eb62f2ad568ca01f8c5de59f691e5850657e4d"
     },
     "NOTICE": {
       "mode": "100644",
-      "sha256": "b8ce0079807206b58a8f8ca954cf69af3e1e18b0621b6ebb3b213491f3a3d815"
+      "sha256": "240a9f86e680c0f8f8da56afb95b875c4b3ff4ad615a62884837481e405df0cd"
     },
     "PHASE4_HOLD.md": {
       "mode": "100644",
@@ -31,27 +35,27 @@
     },
     "README.en.md": {
       "mode": "100644",
-      "sha256": "62132c200923d416b16c4faaa52ac0ca72ecfbe19aad37b7fa9d99413d884b8d"
+      "sha256": "717e551b61876254d869355674336eb7f50d807086f68684493e8dbfb335e44c"
     },
     "README.md": {
       "mode": "100644",
-      "sha256": "8e5cf9d66d4e16181462cae82de66ee6aa049cd600bcd0b1f910b0c6a0be42b5"
+      "sha256": "9d489a7e5a5623bfb87a99a10ccd8390052d3ed548d4913103f9e98a8a25b4b7"
     },
     "SECURITY.md": {
       "mode": "100644",
-      "sha256": "72d931f67229c17e6d5ae19262bd79fa150c0fa9a2b5c03cc568e327fc84a4e7"
+      "sha256": "d4d1df7e331c42f086ceb73449ce487cf9a42591b4224aa31bb8412002b902ed"
     },
     "SUPPORT_MATRIX.md": {
       "mode": "100644",
-      "sha256": "92ed312e081b0b5f6d8691bc6215f11fdd98a7d9b51895b4f0368ee02e99f588"
+      "sha256": "e87cf38905282af34fdd0fe4af065cc74e9c15e27cee3d7241d4756d7072e5a7"
     },
     "VERSION": {
       "mode": "100644",
-      "sha256": "ba57e7c7f71876d645bcdd9fb070f2dea8e6db5ed284a7e3d85c6b7d2409fef1"
+      "sha256": "1f930dd1f133c1f97a94fe3acb8db34372cf4c01ffdb2b3ff4ca72f9494121e9"
     },
     "adapters/claude-code/README.md": {
       "mode": "100644",
-      "sha256": "fe9ab0052863467f6582369fc9fc98ad44cb3a1e6188f9f067ed80ccca7b3835"
+      "sha256": "47709f201ad91f3d774981f8f122cc5d3f983a7a6ef81b3f81cbcb0ced4d84d8"
     },
     "adapters/claude-code/permission_request_hook.py": {
       "mode": "100755",
@@ -119,7 +123,7 @@
     },
     "assets/readme/source/requirements-assets.txt": {
       "mode": "100644",
-      "sha256": "41b54a6fb2918667ca47a61d73b522629d84490f3d78f0f20b21135faba10d35"
+      "sha256": "ae3337e5ae362bf1fad83355272ff595b58aae13d7a7ac67617f6f3161fa0c07"
     },
     "bin/ume-harness": {
       "mode": "100755",
@@ -135,7 +139,7 @@
     },
     "contracts/authority_contract.md": {
       "mode": "100644",
-      "sha256": "33da2a4b1a29f98f3e9ef509637256402cb83686605dd149256b454274a801d1"
+      "sha256": "2b3d6f283f8d70890371b4c0f66d213aba5a6ab676fd1003a125405e2c67b064"
     },
     "contracts/task_intake.md": {
       "mode": "100644",
@@ -159,7 +163,7 @@
     },
     "package_manifest.json": {
       "mode": "100644",
-      "sha256": "fc208440ebb225a188148665eb0ea703adc84b2b8df2aee0a8b8ed345cd10ff2"
+      "sha256": "22ac33865502745330b8bc919dc40fde9d3eecc2622477435cc378368a26afe5"
     },
     "runtime/common_language_pack.py": {
       "mode": "100644",
@@ -187,19 +191,19 @@
     },
     "scripts/health_check.py": {
       "mode": "100755",
-      "sha256": "67e225616217a9e00205c717e97cf14a44f48f1751407db5bbcac07535f93a55"
+      "sha256": "7fe93582cd63a481d970aa15667e395212b4a1cbc96c7eb1fea0a0b58b319069"
     },
     "scripts/install.sh": {
       "mode": "100755",
-      "sha256": "e739e2fd28571aeffddd8d0fb2cfcf5c3b77626872310095968226125fb3e802"
+      "sha256": "24f6f822713f41f287b11416e4724f58793987d2a6a54da485cd4c8e273768c0"
     },
     "scripts/release_promote.py": {
       "mode": "100755",
-      "sha256": "26f63588c9fb65a2cf2ee0e877d22629723391e06fcc5105a63b193d522d042a"
+      "sha256": "7f43eb5b8672e34f4ea3952f42e42ea69fb8161ee82aac3adbca7bbdd80f0bb4"
     },
     "scripts/uninstall.sh": {
       "mode": "100755",
-      "sha256": "9f1f80081521df90156d56134c54a400f27221eb249d2294366f55c9af92f44b"
+      "sha256": "18d1dfb1c6cdf34457223a8d30bd50696c2664cfef7b2c04c5b9ad51fa0293cb"
     },
     "tests/acceptance_record_claude.md": {
       "mode": "100644",
@@ -231,7 +235,7 @@
     },
     "tests/test_portable_core.py": {
       "mode": "100644",
-      "sha256": "dcb0401ef1882feb206f7737ce50122daa8d35e02ff14a98b216882b2f2c42ce"
+      "sha256": "d64d0693177e8e2318a4c86cb4ee1021885d6542d42e11f30f15b64fc907d14e"
     },
     "tests/test_presentation_safety.py": {
       "mode": "100644",
@@ -243,7 +247,7 @@
     },
     "tests/test_release_lifecycle.py": {
       "mode": "100644",
-      "sha256": "980ee532dd9cb6a02b09974471904823d55bb0dcf2f19fb8def9ef64e71728f7"
+      "sha256": "88e4c4e0ef65db29408873031c6113879a2b1f9129e731c60baf1b5afd305aa3"
     },
     "tests/test_translation_konjac.py": {
       "mode": "100644",
@@ -275,7 +279,7 @@
     }
   },
   "schema": "ume-harness-release-identity.v1",
-  "source_commit": "ac3d720fd86f7f76c6a1ba98cad612aa3217ef96",
-  "source_payload_count": 68,
-  "source_payload_root_sha256": "4a31c7d62ab12b2d8d924ce6209a7428df1ed197e44420f8984009a8602cd50a"
+  "source_commit": "a93720c23167d3c6fceeac7d541e30c975b682f2",
+  "source_payload_count": 69,
+  "source_payload_root_sha256": "74cbb41e21590e3da65247e8739863212b845e2562406aea27c13dc942f573c0"
 }
