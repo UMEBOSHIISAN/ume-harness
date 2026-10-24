@@ -184,8 +184,6 @@ for rel in "${PAYLOAD_LIST[@]}"; do
 done
 
 chmod +x "${STAGING_DIR}/bin/ume-harness"
-chmod +x "${STAGING_DIR}/adapters/claude-code/lease_gate_runner.py"
-chmod +x "${STAGING_DIR}/adapters/claude-code/pretooluse_hook.py"
 chmod +x "${STAGING_DIR}/adapters/claude-code/permission_request_hook.py"
 chmod +x "${STAGING_DIR}/adapters/claude-code/posttooluse_failure_hook.py"
 chmod +x "${STAGING_DIR}/scripts/health_check.py"

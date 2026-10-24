@@ -25,7 +25,7 @@ ROOT = Path(__file__).resolve().parents[1]
 VERSION = "v0.1.7"
 CANONICAL_REPOSITORY = "https://github.com/UMEBOSHIISAN/ume-harness-engineering.git"
 PUBLIC_MIRROR_REPOSITORY = "https://github.com/UMEBOSHIISAN/ume-harness.git"
-OWNED_EVENTS = ("PreToolUse", "PermissionRequest", "PostToolUseFailure")
+OWNED_EVENTS = ("PermissionRequest", "PostToolUseFailure")
 
 
 def _run(args, *, env=None, cwd=ROOT, input=None):
@@ -76,6 +76,19 @@ def _install(temp_root: Path):
     return home, prefix, env
 
 
+def test_install_manifest_excludes_retired_execution_runtime():
+    """Installing the candidate must not distribute an unused execution plane."""
+    payload = set(_read_json(ROOT / "package_manifest.json")["install_payload"])
+    retired = {
+        "runtime/activation_updater.py", "runtime/decision_state.py",
+        "runtime/local_execution_gate.py", "runtime/local_execution_lease.py",
+        "runtime/local_execution_lease_state.py", "runtime/stop_adapter.py",
+        "adapters/claude-code/pretooluse_hook.py",
+        "adapters/claude-code/lease_gate_runner.py",
+    }
+    assert not (payload & retired)
+
+
 def test_install_dry_run_accepts_source_path_with_quote(tmp_path):
     source = tmp_path / "source'quote"
     source.mkdir()
@@ -110,35 +123,25 @@ def test_install_dry_run_accepts_source_path_with_quote(tmp_path):
 def test_installed_hooks_execute_from_prefix_with_space(tmp_path):
     prefix = tmp_path / "prefix with space"
     settings_path = tmp_path / "settings.json"
-
     installed = _run(["bash", ROOT / "scripts/install.sh", "--prefix", prefix])
     assert installed.returncode == 0, installed.stdout + installed.stderr
-
     cli = prefix / "bin/ume-harness"
-    configured = _run(
-        [cli, "setup", "--managed", "--yes", "--settings-path", settings_path],
-    )
+    configured = _run([cli, "setup", "--yes", "--settings-path", settings_path])
     assert configured.returncode == 0, configured.stdout + configured.stderr
-
     settings = _read_json(settings_path)
-    command = settings["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
-    invoked = subprocess.run(
-        ["bash", "-lc", command],
-        input=b"",
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
-    assert invoked.returncode == 2, invoked.stderr.decode("utf-8", "replace")
-    assert b"INVALID_HOOK_INPUT" in invoked.stderr
-
-    disconnected = _run(
-        [cli, "setup", "--disconnect", "--settings-path", settings_path],
-    )
+    assert set(settings["hooks"]) == {"PermissionRequest", "PostToolUseFailure"}
+    command = settings["hooks"]["PermissionRequest"][0]["hooks"][0]["command"]
+    invoked = subprocess.run(["bash", "-lc", command],
+        input=json.dumps({"tool_name":"Write", "tool_input":{"file_path":str(tmp_path / "synthetic.txt")}, "cwd":str(tmp_path)}),
+        text=True, capture_output=True)
+    assert invoked.returncode == 0, invoked.stderr
+    rendered = json.loads(invoked.stdout)
+    assert rendered["systemMessage"]
+    assert "permissionDecision" not in rendered
+    assert "terminalSequence" not in rendered
+    disconnected = _run([cli, "setup", "--disconnect", "--settings-path", settings_path])
     assert disconnected.returncode == 0, disconnected.stdout + disconnected.stderr
-    remaining_hooks = _read_json(settings_path).get("hooks", {})
-    for event_name in ("PreToolUse", "PermissionRequest", "PostToolUseFailure"):
-        assert event_name not in remaining_hooks
+    assert not _read_json(settings_path).get("hooks", {})
 
 
 @pytest.mark.parametrize("entry", ["missing", "nonexecutable", "directory"])
@@ -163,7 +166,7 @@ def test_health_explicit_prefix_cannot_fall_back_to_payload_cli(tmp_path, entry)
 def test_health_check_import_probe_ignores_caller_working_directory(tmp_path):
     shadow_dir = tmp_path / "shadow"
     shadow_dir.mkdir()
-    (shadow_dir / "activation_updater.py").write_text(
+    (shadow_dir / "common_language_pack.py").write_text(
         "raise RuntimeError('caller cwd shadowed installed module')\n",
         encoding="utf-8",
     )
@@ -187,7 +190,7 @@ def test_health_check_verifies_identity_before_importing_runtime(tmp_path):
     _home, prefix, env = _install(tmp_path)
     installed = prefix / "lib/ume-harness" / VERSION
     marker = tmp_path / "runtime-imported"
-    (installed / "runtime/activation_updater.py").write_text(
+    (installed / "runtime/common_language_pack.py").write_text(
         f"from pathlib import Path\nPath({str(marker)!r}).write_text('executed')\n"
         "raise RuntimeError('tampered runtime executed')\n",
         encoding="utf-8",
@@ -212,138 +215,6 @@ def test_health_check_verifies_identity_before_importing_runtime(tmp_path):
     assert identity_check["passed"] is False
     assert import_check["passed"] is False
     assert "Skipped" in import_check["detail"]
-    assert not marker.exists()
-
-
-def test_lease_gate_verifies_closure_before_importing_activation_helper(tmp_path):
-    _home, prefix, env = _install(tmp_path)
-    installed = prefix / "lib/ume-harness" / VERSION
-    state_dir = tmp_path / "state"
-    state_dir.mkdir()
-
-    activation = _load_module(ROOT / "runtime/activation_updater.py", "activation_for_lease_gate_order")
-    activation_root = activation.compute_installed_root_digest(str(installed))
-    _write_json(
-        state_dir / "activation.json",
-        {
-            "schema": activation.SCHEMA_VERSION,
-            "mode": "active",
-            "generation": 1,
-            "runtime_root_digest": activation_root,
-            "policy_sha256": activation.PINNED_POLICY_SHA256,
-            "updated_at": "2026-08-31T00:00:00+00:00",
-        },
-    )
-
-    marker = tmp_path / "activation-helper-imported"
-    helper = installed / "runtime/activation_updater.py"
-    helper.write_text(
-        helper.read_text(encoding="utf-8")
-        + f"\nfrom pathlib import Path\nPath({str(marker)!r}).write_text('executed')\n"
-        + "raise RuntimeError('tampered activation helper executed')\n",
-        encoding="utf-8",
-    )
-
-    env = {**env, "UME_HARNESS_STATE_DIR": str(state_dir), "UME_HARNESS_INSTALL_DIR": str(installed)}
-    result = _run(
-        [
-            sys.executable,
-            installed / "adapters/claude-code/pretooluse_hook.py",
-        ],
-        env=env,
-        input=json.dumps({"tool_name": "Read", "tool_input": {"file_path": "/tmp/ordinary.txt"}}),
-    )
-
-    assert result.returncode == 2, result.stdout + result.stderr
-    assert "ACTIVATION_TAMPER" in result.stderr
-    assert not marker.exists()
-
-
-def test_lease_gate_verifies_closure_before_importing_authority_runtime(tmp_path):
-    _home, prefix, env = _install(tmp_path)
-    installed = prefix / "lib/ume-harness" / VERSION
-    state_dir = tmp_path / "state"
-    state_dir.mkdir()
-
-    activation = _load_module(ROOT / "runtime/activation_updater.py", "activation_for_runtime_order")
-    activation_root = activation.compute_installed_root_digest(str(installed))
-    _write_json(
-        state_dir / "activation.json",
-        {
-            "schema": activation.SCHEMA_VERSION,
-            "mode": "active",
-            "generation": 1,
-            "runtime_root_digest": activation_root,
-            "policy_sha256": activation.PINNED_POLICY_SHA256,
-            "updated_at": "2026-08-31T00:00:00+00:00",
-        },
-    )
-
-    marker = tmp_path / "authority-runtime-imported"
-    authority_module = installed / "runtime/tool_policy.py"
-    authority_module.write_text(
-        authority_module.read_text(encoding="utf-8")
-        + f"\nfrom pathlib import Path\nPath({str(marker)!r}).write_text('executed')\n"
-        + "raise RuntimeError('tampered authority runtime executed')\n",
-        encoding="utf-8",
-    )
-
-    env = {**env, "UME_HARNESS_STATE_DIR": str(state_dir), "UME_HARNESS_INSTALL_DIR": str(installed)}
-    result = _run(
-        [sys.executable, installed / "adapters/claude-code/pretooluse_hook.py"],
-        env=env,
-        input=json.dumps({"tool_name": "Read", "tool_input": {"file_path": "/tmp/ordinary.txt"}}),
-    )
-
-    assert result.returncode == 2, result.stdout + result.stderr
-    assert "ACTIVATION_TAMPER" in result.stderr
-    assert not marker.exists()
-
-
-def test_lease_gate_uses_attested_source_bytes_not_timestamp_valid_pyc(tmp_path):
-    _home, prefix, env = _install(tmp_path)
-    installed = prefix / "lib/ume-harness" / VERSION
-    state_dir = tmp_path / "state"
-    state_dir.mkdir()
-
-    activation = _load_module(ROOT / "runtime/activation_updater.py", "activation_for_pyc_order")
-    activation_root = activation.compute_installed_root_digest(str(installed))
-    _write_json(
-        state_dir / "activation.json",
-        {
-            "schema": activation.SCHEMA_VERSION,
-            "mode": "active",
-            "generation": 1,
-            "runtime_root_digest": activation_root,
-            "policy_sha256": activation.PINNED_POLICY_SHA256,
-            "updated_at": "2026-08-31T00:00:00+00:00",
-        },
-    )
-
-    authority_module = installed / "runtime/tool_policy.py"
-    py_compile.compile(str(authority_module), doraise=True)
-    pyc_path = Path(importlib.util.cache_from_source(str(authority_module)))
-    assert pyc_path.exists()
-    marker = tmp_path / "timestamp-valid-pyc-executed"
-    malicious = compile(
-        "from pathlib import Path\n"
-        f"Path({str(marker)!r}).write_text('executed')\n"
-        "raise RuntimeError('malicious timestamp-valid pyc executed')\n",
-        str(authority_module),
-        "exec",
-    )
-    pyc_path.write_bytes(pyc_path.read_bytes()[:16] + marshal.dumps(malicious))
-
-    clean_env = {**env, "UME_HARNESS_STATE_DIR": str(state_dir), "UME_HARNESS_INSTALL_DIR": str(installed)}
-    clean_env.pop("PYTHONPATH", None)
-    clean_env["PYTHONDONTWRITEBYTECODE"] = "1"
-    result = _run(
-        [sys.executable, installed / "adapters/claude-code/pretooluse_hook.py"],
-        env=clean_env,
-        input=json.dumps({"tool_name": "Read", "tool_input": {"file_path": "/tmp/ordinary.txt"}}),
-    )
-
-    assert result.returncode == 0, result.stdout + result.stderr
     assert not marker.exists()
 
 
@@ -376,20 +247,10 @@ def _initial_settings(temp_root: Path) -> dict:
 def test_public_security_policy_is_in_release_only_and_version_is_exact():
     manifest = _read_json(ROOT / "package_manifest.json")
     assert manifest["version"] == VERSION.removeprefix("v")
-    assert (ROOT / "VERSION").read_text(encoding="utf-8").strip() == VERSION.removeprefix("v")
+    assert (ROOT / "VERSION").read_text().strip() == VERSION.removeprefix("v")
     assert "SECURITY.md" in manifest["release"]["payload"]
     assert "SECURITY.md" not in manifest["release_identity"]["closure"]
     assert "SECURITY.md" not in manifest["install_payload"]
-
-    policy = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
-    assert "ume-harness-engineering` is the sole canonical source" in policy
-    assert "GitHub Private Vulnerability Reporting" in policy
-    assert "candidate_actions" in policy
-    assert "When a valid activation state exists" in policy
-    assert "Without activation state, the legacy path does not enforce that closure attestation" in policy
-    assert "presentation-only imports loaded before gate verification remain prerequisites" in policy
-    assert "Secret-path classification is not complete for operating-system pseudo-files" in policy
-    assert "Direct installation from an untrusted or modified checkout" in policy
 
 
 def test_release_identity_is_explicit_and_detects_tampered_bytes():
@@ -398,7 +259,6 @@ def test_release_identity_is_explicit_and_detects_tampered_bytes():
     required = {
         "runtime/translation_konjac.py",
         "runtime/hook_setup_service.py",
-        "adapters/claude-code/pretooluse_hook.py",
         "adapters/claude-code/permission_request_hook.py",
         "adapters/claude-code/posttooluse_failure_hook.py",
         "runtime/common_language_pack.py",
@@ -871,7 +731,7 @@ def test_dangling_hook_check_rejects_shell_dispatch_forms(command_template, monk
         "hook_setup_shell_dispatch_forms",
     )
     pkg_root = Path.home() / ".local/lib/ume-harness/v0.1.6"
-    hook = hss.get_adapter_hook_paths(str(pkg_root))["PreToolUse"]
+    hook = str(pkg_root / "adapters/claude-code/pretooluse_hook.py")
     home_hook = "~" + hook[len(str(Path.home())):]
     spliced_hook = hook.replace("ume-harness", "ume-'harness'", 1)
     empty_variable = "UME_HARNESS_EMPTY_PATH_SEGMENT"
@@ -972,7 +832,7 @@ def test_dangling_hook_check_fails_closed_for_deeply_nested_shell_text():
         "hook_setup_nested_depth_limit",
     )
     pkg_root = Path.home() / ".local/lib/ume-harness/v0.1.6"
-    adapter_dir = Path(hss.get_adapter_hook_paths(str(pkg_root))["PreToolUse"]).parent
+    adapter_dir = Path(str(pkg_root / "adapters/claude-code/pretooluse_hook.py")).parent
     command = f'PATH="/tmp/a b:{adapter_dir}:$PATH" pretooluse_hook.py'
     for _ in range(5):
         command = f"bash -c {shlex.quote(command)}"
@@ -993,37 +853,23 @@ def test_dangling_hook_check_fails_closed_for_deeply_nested_shell_text():
 def test_setup_reconnect_preserves_customized_owned_hook_fields_and_file_bytes():
     sys.path.insert(0, str(ROOT / "runtime"))
     import hook_setup_service as hss
-
     with tempfile.TemporaryDirectory() as td:
         settings_path = Path(td) / ".claude/settings.json"
-        connected, message = hss.install_hooks_to_settings(str(ROOT), str(settings_path), managed=True)
+        connected, message = hss.install_hooks_to_settings(str(ROOT), str(settings_path))
         assert connected, message
-
         data = _read_json(settings_path)
-        owned = hss.get_adapter_hook_paths(str(ROOT))["PreToolUse"]
-        group = next(
-            group for group in data["hooks"]["PreToolUse"]
-            if any(item.get("command") == owned for item in group["hooks"])
-        )
+        owned = hss.get_adapter_hook_commands(str(ROOT))["PermissionRequest"]
+        group = next(group for group in data["hooks"]["PermissionRequest"]
+                     if any(item.get("command") == owned for item in group["hooks"]))
         group["matcher"] = "Bash"
-        owned_item = next(item for item in group["hooks"] if item.get("command") == owned)
-        owned_item["timeout"] = 999
-        owned_item["statusMessage"] = "custom"
+        item = next(item for item in group["hooks"] if item.get("command") == owned)
+        item["timeout"] = 999
+        item["statusMessage"] = "custom"
         _write_json(settings_path, data)
         before = settings_path.read_bytes()
-
-        reconnected, reconnect_message = hss.install_hooks_to_settings(str(ROOT), str(settings_path))
-        assert reconnected, reconnect_message
+        reconnected, detail = hss.install_hooks_to_settings(str(ROOT), str(settings_path))
+        assert reconnected, detail
         assert settings_path.read_bytes() == before
-        after = _read_json(settings_path)
-        preserved = next(
-            group for group in after["hooks"]["PreToolUse"]
-            if any(item.get("command") == owned for item in group["hooks"])
-        )
-        assert preserved["matcher"] == "Bash"
-        item = next(item for item in preserved["hooks"] if item.get("command") == owned)
-        assert item["timeout"] == 999
-        assert item["statusMessage"] == "custom"
 
 
 def _write_user_owned_cli(temp_root: Path, prefix: Path, *, symlink: bool):
@@ -1226,18 +1072,7 @@ def test_install_force_refuses_verified_installation_without_mutation():
         assert cli_use.returncode == 0, cli_use.stdout + cli_use.stderr
         direct_cli_use = _run([installed / "bin/ume-harness", "--help"], env=env)
         assert direct_cli_use.returncode == 0, direct_cli_use.stdout + direct_cli_use.stderr
-        direct_runner_use = _run(
-            [installed / "adapters/claude-code/lease_gate_runner.py", "--help"],
-            env=env,
-        )
-        assert direct_runner_use.returncode == 0, direct_runner_use.stdout + direct_runner_use.stderr
         hook_payloads = {
-            "pretooluse_hook.py": {
-                "hook_event_name": "PreToolUse",
-                "tool_name": "Read",
-                "tool_input": {"file_path": str(temp_root / "normal.txt")},
-                "cwd": str(temp_root),
-            },
             "permission_request_hook.py": {
                 "hook_event_name": "PermissionRequest",
                 "tool_name": "Bash",
@@ -1266,7 +1101,7 @@ def test_install_force_refuses_verified_installation_without_mutation():
 
         settings_path = _home / ".claude/settings.json"
         setup = _run(
-            [prefix / "bin/ume-harness", "setup", "--managed", "--yes",
+            [prefix / "bin/ume-harness", "setup", "--yes",
              "--settings-path", settings_path], env=env,
         )
         assert setup.returncode == 0, setup.stdout + setup.stderr
@@ -1424,7 +1259,7 @@ def test_owned_install_verifier_rejects_fifo_without_blocking():
         temp_root = Path(td)
         _home, prefix, env = _install(temp_root)
         installed = prefix / "lib/ume-harness" / VERSION
-        payload_path = installed / "runtime/decision_state.py"
+        payload_path = installed / "runtime/human_layer_adapter.py"
         payload_path.unlink()
         os.mkfifo(payload_path)
 
@@ -1452,7 +1287,6 @@ def test_owned_install_verifier_rejects_fifo_without_blocking():
 
 def test_installed_hook_entrypoints_use_portable_env_shebangs():
     hook_names = (
-        "pretooluse_hook.py",
         "permission_request_hook.py",
         "posttooluse_failure_hook.py",
     )
@@ -1461,10 +1295,6 @@ def test_installed_hook_entrypoints_use_portable_env_shebangs():
         lines = hook_path.read_text(encoding="utf-8").splitlines()
         assert lines[0] == "#!/usr/bin/env python3"
         assert "sys.dont_write_bytecode = True" in lines
-    runner_lines = (ROOT / "adapters/claude-code/lease_gate_runner.py").read_text(
-        encoding="utf-8"
-    ).splitlines()
-    assert "sys.dont_write_bytecode = True" in runner_lines
 
 
 def test_install_force_refuses_verified_payload_with_extra_user_bytes():
@@ -1861,7 +1691,7 @@ def test_release_promotion_is_clean_explicit_deterministic_and_one_way():
         release.verify_staged_release(stage_two)
         assert not (stage_one / "ambient-scratch.txt").exists()
         assert (stage_one / generated).is_file()
-        for regression in ("test_live_search_regression.py", "test_audit_boundary_regressions.py", "test_presentation_safety.py"):
+        for regression in ("test_presentation_safety.py", "test_hook_registration_diagnostics.py"):
             assert (stage_one / "tests" / regression).read_bytes() == (ROOT / "tests" / regression).read_bytes()
         assert release.compare_trees(stage_one, stage_two) == []
         assert _read_json(stage_one / generated) == _read_json(stage_two / generated)

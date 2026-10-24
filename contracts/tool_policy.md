@@ -1,146 +1,15 @@
-# Tool Policy Contract (Portable)
+# Preview side-effect meaning
 
-> Scope: ume-harness runtime | State: ENFORCED
-> 目的: あらゆるツール呼び出し（ファイル操作・コマンド実行・外部送信等）を5クラスへ分類し、
-> Authority Tier（authority_contract.md §3）と組み合わせて許可/承認要求/拒否を決定する。
+runtime/tool_policy.py contains pure enums and a lookup used by the non-executing
+Human Layer. It is not a host gate or a shell-command classifier.
 
-## 5つの副作用クラス
+For the CLI's TIER_NORMAL preview: READ_ONLY/BOUNDED_WRITE are provisional work
+candidates; EXTERNAL_MUTATION/DESTRUCTIVE/AUTHORITY_TOUCH/UNKNOWN need human
+judgment before execution. The compatibility Tier table remains pure metadata;
+it cannot grant or deny a real tool. Unknown table keys conservatively require
+judgment. Candidate provenance survives compound-action splitting.
 
-```
-READ_ONLY           読み取りのみ。副作用なし
-BOUNDED_WRITE        境界内のファイル作成・編集（TIER_NORMAL相当領域への書込）
-EXTERNAL_MUTATION    外部システムへの送信・通信（API呼び出し・メール送信・公開等）
-DESTRUCTIVE          削除・破壊的操作（元に戻せない、または戻すコストが高い）
-AUTHORITY_TOUCH      権限構造そのものへの操作（設定ファイル・ガード・トークンストア）
-```
-
-## 分類 × Tier の決定表
-
-| 副作用クラス | TIER_NORMAL | TIER_RUNTIME_CODE | TIER_GOVERNANCE | TIER_SECRETS | TIER_CONSTITUTION |
-|---|---|---|---|---|---|
-| READ_ONLY | ALLOW | ALLOW | ALLOW | **DENY**（読み取りも拒否） | ALLOW |
-| BOUNDED_WRITE | ALLOW | APPROVAL_REQUIRED | APPROVAL_REQUIRED | DENY | DENY |
-| EXTERNAL_MUTATION | APPROVAL_REQUIRED | APPROVAL_REQUIRED | APPROVAL_REQUIRED | DENY | DENY |
-| DESTRUCTIVE | APPROVAL_REQUIRED | APPROVAL_REQUIRED | APPROVAL_REQUIRED | DENY | DENY |
-| AUTHORITY_TOUCH | APPROVAL_REQUIRED | APPROVAL_REQUIRED | APPROVAL_REQUIRED | DENY | DENY |
-| unknown side-effect（分類不能） | APPROVAL_REQUIRED（fail-closed） | 同左 | 同左 | DENY | DENY |
-
-`unknown side-effect` は「stop（一旦止めて人間に聞く）」を既定にする。分類器が判断できない
-操作を安全側へ倒す（fail-closedの原則。個人実装の `is_hooks_write_intent()` 系の教訓＝
-分類が甘いと read-only まで誤って拒否する事故を招くため、判定不能時は
-「拒否」ではなく「承認要求」に倒し、無限に拒否し続けない設計にする）。
-
-## v0で十分な最小セット（human裁定 2026-08-18）
-
-```
-read                     → allow
-approved scope内 write   → allow
-delete                   → explicit approval
-external send            → explicit approval
-publish / purchase       → explicit approval
-unknown side-effect      → stop（人間に確認）
-```
-
-## LocalExecutionLease V0 overlay
-
-### Local-work host policy (v0.1.7 development candidate)
-
-接続境界: 標準setupはPermissionRequest/PostToolUseFailureの説明だけを登録する。
-以下の追加実行判定は明示的な `setup --managed` のPreToolUseに限る。
-標準接続には追加のcurl/Python/WebSearch/MCP拒否を挿入せず、native hostの判断を保持する。
-厳格接続のネットワーク分類は外部通信も含む保守的な分類であり、GETが外部データを
-変更したという事実認定ではない。一般の仕事には標準接続を使う。
-厳格モードは複数hardlinkを拒否し、literal searchはCDPATHに依存するcdを証明しない。
-lexical pathとrealpathの両方を保護判定し、後から発見したshell対象にも失効Leaseを適用する。
-これはOS sandboxやTOCTOU対策の代替ではない。
-
-Claude hostの通常プロジェクト内Read/Edit/Write/NotebookEditは、保護対象・入力・
-activation・明示制限の検査後、既存のhost permission flowへ戻す。`src/`、`scripts/`、
-`tests/`やコード拡張子だけを理由に追加承認を要求しない。Git、Lease、domain descriptorは
-通常作業の前提ではない。ここでの`defer`はHarnessが許可を発行する意味ではなく、
-`permissionDecision: allow`は出力しない。hostのask/denyをそのまま保持する。
-
-認証ファイルの内容をRead/catで取得する要求と、`SERVICE_ACCOUNT_JSON=/absolute/path`
-をPythonスクリプトへ渡す要求は区別する。後者の単純な`python3 script.py ...`形だけは
-パス指定そのものを秘密の直接取得と扱わず、既存のnative確認へ戻す。スクリプトの
-安全性・read-only性を認定するものではなく、外部への変更・秘密の表示を承認しない。
-inline `-c`、保護領域のscript、秘密パスを直接引数にした読み出し、および
-`bypassPermissions`ではこの扱いをしない。新しい承認発行器や任意コマンドallowlistは作らない。
-
-通常の`&&`・pipe・リダイレクトは構文だけで永久拒否しない。明示的な危険command、
-保護path、domain/Lease制限を検査した後、未解決ならnative `ask`へ戻す。
-command substitutionは未対応のためdeny。確認が必要な経路はbypassモードではdeny。
-このscreenはshell sandboxではなく、任意プログラムの隠れた副作用は保証しない。
-
-上のCore Tier表は明示管理されたruntime領域に対する既存契約として保持する。
-明示Lease/domainがある場合は以下のoverlayが優先し、期限切れ・破損・revoked状態を
-「通常モード」に落とさない。通常プロジェクトと制限付き作業を混同しない。
-
-host固有の保護rootは`<state_dir>/local_work_policy.json`で指定する。
-`schema_version: local_work_policy.v1`、`protected_roots: [絶対パス, ...]`を持つ。
-未設定時もbuilt-in保護は残るが、利用者固有の管理ディレクトリ保護は設定が必要。
-不正な設定は評価エラー。tool入力やcwdからこの設定の権限を導出しない。
-
-host結果は`defer / ask / deny / error`を区別する。確認可能なlocal操作だけが
-`ask`を返す。外部authority不足・秘密・制限違反をlocal確認に置換しない。
-任意Pythonや不明なscriptをread-onlyとは断定しない。説明文は同じ判定結果を表示し、
-許可を生成しない。標準承認UIが利用できないhostで自動承認や再試行を行わない。
-
-`LOCAL_EXECUTION_LEASE_V0` のCore、persisted capability ceiling、path/Tier判定、
-および作業ツリー内外のpre-operation overlayは実装・テスト済みであり、Claude Code
-`PreToolUse`（`lease_gate_runner.py`）へ結線されている。observer駆動のexpected-state /
-concurrent / out-of-band mutation検知はCoreに実装済みだがClaude hostには未結線である。
-
-### Ownership boundary
-
-このTool Policyは、Harness-ownedなlocal executionのallow / approval-required / deny semanticsを
-所有する。判定に用いるtask identityやdigestはbounded local task referenceであり、Harnessが
-所有するlocal work-intake / task / preflight semanticsの範囲だけで解釈する。
-
-外部からcompatible referenceが供給される場合、その参照データは外部providerが所有する
-input metadataのままである。Tool Policyはそれを外部authorityへ昇格させず、外部の
-Evidence、Verification、Approval、Receiptの意味論を複製しない。
-
-consequential Decision / External Action AuthorityはHarnessの外部にあり、Mothershipが所有する。
-host gateはHarness-ownedなlocal policyのenforcementを所有する。provider adapterや
-LocalExecutionLeaseは、consequential authorityを生成・再解釈・伝播しない。
-
-`ACTIVE` 化後に限り、validな `LocalExecutionLease` が以下をすべて満たす場合、
-Leaseにbindされたworktree内のbounded repository-local edit/createについて、
-`TIER_RUNTIME_CODE` の既定の `APPROVAL_REQUIRED` を、persisted `edit` capabilityの範囲内で
-`ALLOW` に投影できる。Coreは`test` capabilityと`test_profile`も導出・保存するが、現行Claude
-adapterにはprofileから許可commandへ変換するhost mappingがない。test-only Leaseは任意Bashを
-許可せず、未知のtest commandは`APPROVAL_REQUIRED`を維持する。
-
-- bounded local task reference digestが一致する
-- repository / worktree realpath / branch / starting HEADが一致する
-- baseline anchorがstate schema上で整合する
-- expiry / lifecycle / revocationが有効である
-- protected-zone policyに違反しない
-- persisted capability ceilingが要求operationを許可する
-
-validなLeaseが存在しない、または一つでも検証に失敗した場合は、既存の
-`APPROVAL_REQUIRED` または `DENY` のfail-closed判定を維持する。Leaseは削除、stage、commit、
-任意shell、network、secret、hook authority、external mutationを許可しない。
-
-`LocalWorkspacePreparation` はこのoverlayの入力となる作業環境証拠を準備するだけであり、
-Human AuthorityでもExternal Action Authorityでもない。PreparationまたはLeaseの成功は、
-push、PR creation、PR merge、deploy、publish、sendの承認へ伝播しない。
-
-task / policy / runtime contextのbinding、persisted V0 capability ceiling、expiry / lifecycle /
-revoke、protected-zone、path/Tier、およびpre-operation host gate（`pretooluse_hook.py`）は
-決定論的に機能し、有効な`edit` capabilityを持つ`LocalExecutionLease`の存在下でのみ
-managed runtime codeのローカル編集を許可する。
-
-`LeaseStateStore.begin_operation()` / `complete_operation()`が提供するcurrent expected execution
-stateとconcurrent / out-of-band mutation検知は、trusted observerをbindしたCoreテストでは
-機能する。現行Claude adapterはそのoperation lifecycleを呼び出さないため、Claude host上では
-`NOT WIRED / EXPERIMENTAL`であり、v0のhost enforcement claimには含めない。
-
-## Portable / Drop / Adapter-only の対応（監査結果の反映）
-
-- **Portable**: 5クラス分類・Tier決定表・fail-closed原則・トークン消費モデル
-- **Drop**（Coreに含めない）: WooCommerce固有secretパターン・X API固有ロジック・
-  production host固有判定・pm2固有プロセス制御・crontab/launchctl固有ガード
-- **Adapter-only**: 利用者自身のビジネスAPIのsecretパターン、本番ホスト一覧、
-  プロセスマネージャ、スケジューラ変更対象は `adapters/<host>/policy_extension` で追加定義する
+required_human_approvals is a list of suggested decisions, never a token or
+permission receipt. Persistent approval/token storage and shell execution
+classification were retired. Actual native permissions and human authority are
+checked by the host, independently of these labels.

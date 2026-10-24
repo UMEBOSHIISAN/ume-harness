@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Ownership service for Claude Code hooks and the installed CLI wrapper.
+"""Ownership service for presentation hooks and the installed CLI wrapper.
 
-It owns exactly three hook command paths and one exact generated wrapper under
+It owns two current presentation paths, recognizes one retired path for
+inventory and explicit disconnect, and owns one exact generated wrapper under
 the supplied package root. It never claims artifacts by substring or filename.
 """
 
@@ -25,6 +26,16 @@ from typing import Any, Dict, List, Optional, Tuple
 
 OWNERSHIP_PROTOCOL_VERSION = "ume-harness-ownership.v1"
 PRESENTATION_TIMEOUT_SECONDS = 3
+RETIRED_PRETOOLUSE_TIMEOUT_SECONDS = 10
+
+MANAGED_RETIREMENT_MESSAGE = (
+    "managed setup is retired; disconnect the old connection with its old CLI, "
+    "then run setup without --managed"
+)
+LEGACY_PRETOOLUSE_HOLD_MESSAGE = (
+    "retired PreToolUse is still registered under this package root; use the old "
+    "CLI with --disconnect, then run setup without --managed"
+)
 
 
 def get_default_settings_path() -> str:
@@ -33,26 +44,48 @@ def get_default_settings_path() -> str:
 
 
 def get_adapter_hook_paths(pkg_root: str) -> Dict[str, str]:
+    """Return the two currently shipped presentation hook paths."""
     adapter_dir = os.path.join(os.path.abspath(pkg_root), "adapters", "claude-code")
     return {
-        "PreToolUse": os.path.join(adapter_dir, "pretooluse_hook.py"),
         "PermissionRequest": os.path.join(adapter_dir, "permission_request_hook.py"),
         "PostToolUseFailure": os.path.join(adapter_dir, "posttooluse_failure_hook.py"),
     }
 
 
+def get_retired_hook_paths(pkg_root: str) -> Dict[str, str]:
+    """Return retired paths kept only for inventory and explicit disconnect."""
+    adapter_dir = os.path.join(os.path.abspath(pkg_root), "adapters", "claude-code")
+    return {"PreToolUse": os.path.join(adapter_dir, "pretooluse_hook.py")}
+
+
+def get_owned_hook_paths(pkg_root: str) -> Dict[str, str]:
+    """Return current presentation paths plus exact retired disconnect paths."""
+    paths = dict(get_adapter_hook_paths(pkg_root))
+    paths.update(get_retired_hook_paths(pkg_root))
+    return paths
+
+
 def get_adapter_hook_commands(pkg_root: str) -> Dict[str, str]:
-    """Return shell-safe command strings for the three owned hook paths."""
+    """Return shell-safe command strings for the current presentation hooks."""
     return {
         event_name: shlex.quote(path)
         for event_name, path in get_adapter_hook_paths(pkg_root).items()
     }
 
 
+def get_retired_hook_commands(pkg_root: str) -> Dict[str, str]:
+    """Return shell-safe command strings for retired inventory/disconnect paths."""
+    return {
+        event_name: shlex.quote(path)
+        for event_name, path in get_retired_hook_paths(pkg_root).items()
+    }
+
+
 def _owned_hook_command_variants(pkg_root: str) -> Dict[str, frozenset[str]]:
-    """Return current commands plus exact legacy unquoted commands."""
-    paths = get_adapter_hook_paths(pkg_root)
-    commands = get_adapter_hook_commands(pkg_root)
+    """Return exact current and retired commands eligible for disconnect."""
+    paths = get_owned_hook_paths(pkg_root)
+    commands = dict(get_adapter_hook_commands(pkg_root))
+    commands.update(get_retired_hook_commands(pkg_root))
     return {
         event_name: frozenset({paths[event_name], commands[event_name]})
         for event_name in paths
@@ -94,8 +127,18 @@ def inspect_hook_registrations(data: Dict[str, Any], pkg_root: str, *, settings_
     """
     if not isinstance(data, dict) or not isinstance(data.get("hooks", {}), dict):
         raise ValueError("settings hooks must be an object")
-    owned = _owned_hook_command_variants(pkg_root)
     paths = get_adapter_hook_paths(pkg_root)
+    retired_paths = get_retired_hook_paths(pkg_root)
+    recognized_paths = dict(paths)
+    recognized_paths.update(retired_paths)
+    current_commands = {
+        event_name: frozenset({paths[event_name], get_adapter_hook_commands(pkg_root)[event_name]})
+        for event_name in paths
+    }
+    retired_commands = {
+        event_name: frozenset({retired_paths[event_name], get_retired_hook_commands(pkg_root)[event_name]})
+        for event_name in retired_paths
+    }
     settings_dir = os.path.dirname(os.path.abspath(settings_path))
     legacy_path = (
         os.path.join(settings_dir, "hooks", "unified_tool_classifier.py")
@@ -112,12 +155,17 @@ def inspect_hook_registrations(data: Dict[str, Any], pkg_root: str, *, settings_
                 command = hook.get("command") if isinstance(hook, dict) else None
                 classification = "ambiguous"
                 is_owned = False
+                is_retired = False
                 target = None
                 if isinstance(hook, dict) and hook.get("type") != "command":
                     classification = "non_command"
                 elif isinstance(command, str):
-                    is_owned = command in owned.get(event, ())
-                    if is_owned:
+                    is_retired = command in retired_commands.get(event, ())
+                    is_owned = command in current_commands.get(event, ())
+                    if is_retired:
+                        classification = "retired_pretooluse"
+                        target = retired_paths[event]
+                    elif is_owned:
                         classification = "current"
                         target = paths[event]
                     else:
@@ -137,9 +185,9 @@ def inspect_hook_registrations(data: Dict[str, Any], pkg_root: str, *, settings_
                                 classification = "legacy_classifier"
                             elif target == paths.get(event):
                                 classification = "current_unowned"
-                            elif event in paths and re.search(
+                            elif event in recognized_paths and re.search(
                                 r"/ume-harness/v[0-9]+\.[0-9]+\.[0-9]+(?:-rc\.[0-9]+)?/adapters/claude-code/"
-                                + re.escape(os.path.basename(paths[event])) + r"$", target
+                                + re.escape(os.path.basename(recognized_paths[event])) + r"$", target
                             ):
                                 classification = "other_version_reference"
                             else:
@@ -147,10 +195,17 @@ def inspect_hook_registrations(data: Dict[str, Any], pkg_root: str, *, settings_
                 records.append({"event": event, "matcher": group.get("matcher"),
                                 "group_index": gi, "hook_index": hi, "command": command,
                                 "classification": classification, "owned": is_owned,
+                                "retired": is_retired,
                                 "target": target,
                                 "timeout": hook.get("timeout") if isinstance(hook, dict) else None})
     pre = [r for r in records if r["event"] == "PreToolUse"]
     current = [r for r in pre if r["classification"] in ("current", "current_unowned")]
+    retired = [r for r in pre if r["classification"] == "retired_pretooluse"]
+    foreign_pretooluse = [
+        r for r in pre
+        if not r["owned"] and not r["retired"]
+        and r["classification"] not in ("legacy_classifier",)
+    ]
     findings = []
     if len(current) > 1:
         findings.append("duplicate_current_pretooluse")
@@ -166,12 +221,14 @@ def inspect_hook_registrations(data: Dict[str, Any], pkg_root: str, *, settings_
     ) for r in records)
     connected = {r["event"] for r in records if r["owned"]}
     complete = {r["event"] for r in records if r["owned"] and r["matcher"] in (None, "", "*")}
-    if findings or conflicting:
+    if retired:
+        connected_mode = "legacy_hold"
+    elif findings or conflicting:
         connected_mode = "conflict"
     elif not connected:
         connected_mode = "disconnected"
     elif connected == complete == set(paths):
-        connected_mode = "managed"
+        connected_mode = "presentation"
     elif connected == complete == {"PermissionRequest", "PostToolUseFailure"}:
         connected_mode = "presentation"
     else:
@@ -180,8 +237,11 @@ def inspect_hook_registrations(data: Dict[str, Any], pkg_root: str, *, settings_
             "connected_mode": connected_mode,
             "live_effective_settings": "unknown", "restart_status": "unknown; verify in a fresh host",
             "session_hook_recognition": "unknown", "actual_hook_event": "unknown",
-            "matcher_overlap": "not evaluated", "profile_diagnostics": "separate health check --state-dir required",
-            "registrations": records, "findings": findings}
+            "matcher_overlap": "not evaluated", "profile_diagnostics": "retired; no UME state inspection",
+            "registrations": records, "findings": findings,
+            "retired_pretooluse": bool(retired),
+            "foreign_pretooluse": foreign_pretooluse,
+            "additional_host_controls": bool(foreign_pretooluse)}
 
 
 def inspect_settings_file(settings_path: str, pkg_root: str) -> Dict[str, Any]:
@@ -202,23 +262,20 @@ def generate_preview(settings_path: str, hook_paths: Dict[str, str]) -> str:
         "【変更対象ファイル】",
         f"  {settings_path}",
         "",
-        "【追加される日本語通訳フック】",
-        "  PermissionRequest: 許可時の日本語説明（表示はCC・端末依存。macOS通知は別途明示選択）",
+        "【追加される日本語説明フック】",
+        "  PermissionRequest: 許可時の日本語説明（表示はCC・端末依存。通知はホスト側の機能です）",
         f"     -> {hook_paths.get('PermissionRequest')}",
         "  PostToolUseFailure: エラー発生時の事実ベースの案内",
         f"     -> {hook_paths.get('PostToolUseFailure')}",
         "",
         "【安全の保証】",
         "  ✓ 変更前に既存設定のバックアップを自動作成します",
-        "  ✓ `ume-harness setup --disconnect` は所有する全3種類のフックを取り外します",
+        "  ✓ `ume-harness setup --disconnect` は所有する説明フックと旧版の完全一致登録だけを取り外します",
         "  ✓ その他の設定・イベント・matcher・hookには触れません",
+        "  ✓ 説明フックは権限判断や実行制限を追加しません",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
     ]
-    if "PreToolUse" in hook_paths:
-        lines.insert(12, f"  PreToolUse: managed実行制限（明示選択または既存接続を保持） -> {hook_paths['PreToolUse']}")
-        lines.insert(13, "  managedは保守的な評価です。未知tool・shell処理等で追加確認や拒否があり、任意scriptの安全性は保証しません。")
-    else:
-        lines.insert(12, "  presentation: 表示用2本。実行制限の追加は setup --managed で明示選択します。")
+    lines.insert(12, "  presentation: 表示用2本。ホストの権限設定・sandbox・worktreeはClaude Codeが管理します。")
     return "\n".join(lines)
 
 
@@ -228,14 +285,17 @@ def _connection_summary(data: Dict[str, Any], pkg_root: str, settings_path: str)
     mode = report["connected_mode"]
     lines = [f"登録結果: {mode}（この設定ファイルのみ）"]
     if mode == "presentation":
-        lines.append("説明のみ: UMEの追加実行制限・Lease・path制限を強制しません。")
-    elif mode == "managed":
-        lines.append("厳格接続です。説明だけには移行していません。移行は --disconnect 後に通常setupしてください。")
+        lines.append("説明のみ: UMEの追加実行制限やpath制限を強制しません。")
+    elif mode == "legacy_hold":
+        lines.append("旧版のPreToolUseが残っています。旧CLIで明示的に切断してから説明フックを接続してください。")
     else:
         lines.append("接続範囲は未確認です。登録診断を確認し、所有不明のhookは管理者に確認してください。")
     lines.append("Claude Codeの権限設定は変更しません。nativeの許可は今回の依頼範囲の承認ではありません。")
     lines.append("依頼範囲外の実装・重大操作の防止を、本接続だけで保証しません。")
     lines.append("CCセッションでの設定認識・実イベントの発火は未確認です。")
+    if report.get("additional_host_controls"):
+        lines.append("他の設定・hookも追加のホスト制御として適用される可能性があります。効果は未確認です。")
+        lines.append("UMEの説明フック2本だけでは、ホスト全体が無制限とは判断できません。")
     if any(r["owned"] and r["event"] in ("PermissionRequest", "PostToolUseFailure")
            and r["timeout"] != PRESENTATION_TIMEOUT_SECONDS for r in report["registrations"]):
         lines.append("既存timeout設定を維持しました。説明hookの短い時間上限は未確認です。変更は対象を確認して再接続してください。")
@@ -410,7 +470,7 @@ def _remove_owned_commands(
     data: Dict[str, Any],
     owned_commands_by_event: Dict[str, frozenset[str]],
 ) -> bool:
-    """Remove exact canonical commands only from the three owned events."""
+    """Remove exact canonical commands only from their owned events."""
     hooks = data.get("hooks")
     if hooks is None:
         return False
@@ -460,6 +520,10 @@ def _remove_owned_commands(
                     and len(group_hooks) == 1
                     and isinstance(group_hooks[0], dict)
                     and (set(group_hooks[0]) == {"type", "command"}
+                         or (event_name == "PreToolUse"
+                             and set(group_hooks[0]) == {"type", "command", "onFailure", "timeout"}
+                             and group_hooks[0]["onFailure"] == "block"
+                             and group_hooks[0]["timeout"] == RETIRED_PRETOOLUSE_TIMEOUT_SECONDS)
                          or (event_name in ("PermissionRequest", "PostToolUseFailure")
                              and set(group_hooks[0]) == {"type", "command", "timeout"}
                              and group_hooks[0]["timeout"] == PRESENTATION_TIMEOUT_SECONDS))
@@ -984,7 +1048,7 @@ def contains_noncanonical_hook_reference(data: Dict[str, Any], pkg_root: str) ->
     if not isinstance(hooks, dict):
         raise ValueError("settings.json の hooks は JSON object である必要があります。")
 
-    canonical_paths = set(get_adapter_hook_paths(pkg_root).values())
+    canonical_paths = set(get_owned_hook_paths(pkg_root).values())
     absolute_pkg_root = os.path.abspath(pkg_root)
     pkg_root_references = {absolute_pkg_root}
     home = os.path.expanduser("~")
@@ -1076,17 +1140,11 @@ def _event_contains_owned_command(event_name: str, event_groups: Any, owned_comm
 
 
 @_settings_writer
-def install_hooks_to_settings(
+def _install_hooks_to_settings_locked(
     pkg_root: str,
     settings_path: Optional[str] = None,
-    *,
-    managed: bool = False,
 ) -> Tuple[bool, str]:
-    """Merge presentation hooks; add execution enforcement only by explicit opt-in.
-
-    Existing owned PreToolUse registrations remain untouched by default setup.
-    The settings themselves are the only record of the connection profile.
-    """
+    """Merge the two presentation hooks while preserving existing host controls."""
     if not settings_path:
         settings_path = get_default_settings_path()
     settings_path = os.path.abspath(settings_path)
@@ -1099,14 +1157,14 @@ def install_hooks_to_settings(
     try:
         current_data, existed, revision = _read_settings_snapshot(settings_path)
         inventory = inspect_hook_registrations(current_data, pkg_root, settings_path=settings_path)
+        if inventory.get("retired_pretooluse"):
+            return False, LEGACY_PRETOOLUSE_HOLD_MESSAGE
         if inventory["connected_mode"] == "conflict":
             return False, "登録状態 conflict: 設定は変更していません。登録診断で重複・旧版を確認し、所有元のCLIで明示的に切断してください。"
     except Exception as e:
         return False, f"既存の settings.json の読み込みに失敗しました: {e}"
 
     hook_commands = get_adapter_hook_commands(pkg_root)
-    if not managed:
-        hook_commands.pop("PreToolUse")
     changed = False
     try:
         # Quote exact legacy commands in place: matcher, timeout, metadata and
@@ -1169,6 +1227,29 @@ def install_hooks_to_settings(
     return True, f"接続完了\nバックアップ: {backup_path}\n{summary}"
 
 
+def install_hooks_to_settings(
+    pkg_root: str,
+    settings_path: Optional[str] = None,
+    *,
+    managed: bool = False,
+) -> Tuple[bool, str]:
+    """Install presentation hooks, with retirement and migration guards."""
+    if managed:
+        return False, MANAGED_RETIREMENT_MESSAGE
+
+    target_path = os.path.abspath(settings_path or get_default_settings_path())
+    try:
+        current_data, existed, _ = _read_settings_snapshot(target_path)
+        if existed:
+            inventory = inspect_hook_registrations(current_data, pkg_root, settings_path=target_path)
+            if inventory.get("retired_pretooluse"):
+                return False, LEGACY_PRETOOLUSE_HOLD_MESSAGE
+    except Exception as exc:
+        return False, f"既存の settings.json の読み込みに失敗しました: {exc}"
+
+    return _install_hooks_to_settings_locked(pkg_root, target_path)
+
+
 @_settings_writer
 def disconnect_hooks_from_settings(
     pkg_root: str,
@@ -1222,8 +1303,8 @@ def disconnect_hooks_from_settings(
 
     if changed:
         if durability_unconfirmed:
-            return True, "ume-harness が所有する3本のフックを切断しました（永続性の確認は保留です）。"
-        return True, "ume-harness が所有する3本のフックを切断しました。"
+            return True, "ume-harness が所有するフックを切断しました（永続性の確認は保留です）。"
+        return True, "ume-harness が所有するフックを切断しました。"
     return True, "ume-harness が所有するフックは接続されていません。"
 
 

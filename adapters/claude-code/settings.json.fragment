@@ -1,23 +1,13 @@
 {
   "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "<UME_HARNESS_INSTALL_DIR>/adapters/claude-code/pretooluse_hook.py"
-          }
-        ]
-      }
-    ],
     "PermissionRequest": [
       {
         "matcher": "*",
         "hooks": [
           {
             "type": "command",
-            "command": "<UME_HARNESS_INSTALL_DIR>/adapters/claude-code/permission_request_hook.py"
+            "command": "<UME_HARNESS_INSTALL_DIR>/adapters/claude-code/permission_request_hook.py",
+            "timeout": 3
           }
         ]
       }
@@ -28,7 +18,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "<UME_HARNESS_INSTALL_DIR>/adapters/claude-code/posttooluse_failure_hook.py"
+            "command": "<UME_HARNESS_INSTALL_DIR>/adapters/claude-code/posttooluse_failure_hook.py",
+            "timeout": 3
           }
         ]
       }

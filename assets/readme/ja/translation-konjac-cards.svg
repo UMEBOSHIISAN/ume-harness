@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 980" role="img" aria-labelledby="title desc">
-  <title id="title">Translation Konjac — 技術操作を普通の日本語へ</title>
-  <desc id="desc">説明用の表示です。外部操作の権限は発行しません。</desc>
+  <title id="title">UMEが返す日本語の説明例</title>
+  <desc id="desc">説明用の図です。実際の権限確認はホストが扱います。</desc>
   <style>
     .title { font: 700 28px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #202b38; }
     .label { font: 700 26px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #202b38; }
@@ -8,23 +8,23 @@
     .small { font: 20px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #64748b; }
   </style>
   <rect width="720" height="980" fill="#f8fafc"/>
-  <text class="title" x="360" y="58" text-anchor="middle">Translation Konjac — 技術操作を普通の日本語へ</text>
-  <g><title>変更されたファイルがあるか確認しています</title>
+  <text class="title" x="360" y="58" text-anchor="middle">UMEが返す日本語の説明例</text>
+  <g><title>作業案と必要な判断を整理する</title>
   <rect x="45" y="110" width="630" height="215" rx="24" fill="#e6eef9" stroke="#315f9f" stroke-width="4"/>
-  <text class="label" x="360" y="162" text-anchor="middle">読むだけ</text>
-  <text class="body" x="360" y="215" text-anchor="middle">変更されたファイルがあるか</text>
-<text class="body" x="360" y="249" text-anchor="middle">確認しています</text>
-</g><g><title>⚠️ ここからPCの外へ出ます。GitHub の「作業ブランチ」へ履歴を送ろうとしています</title>
+  <text class="label" x="360" y="162" text-anchor="middle">作業前preview</text>
+  <text class="body" x="360" y="215" text-anchor="middle">作業案と質問を整理</text>
+<text class="body" x="360" y="249" text-anchor="middle">この時点では操作しません</text>
+</g><g><title>許可・拒否はホストの画面で判断</title>
   <rect x="45" y="355" width="630" height="215" rx="24" fill="#fff0d7" stroke="#b56817" stroke-width="4"/>
-  <text class="label" x="360" y="407" text-anchor="middle">PCの外へ出る（表示例）</text>
-  <text class="body" x="360" y="460" text-anchor="middle">⚠️ ここからPCの外へ出ます。</text>
-<text class="body" x="360" y="494" text-anchor="middle">GitHub の「作業ブランチ」へ</text>
-<text class="body" x="360" y="528" text-anchor="middle">履歴を送ろうとしています</text>
-</g><g><title>⚠️ 「選択した対象」を削除しようとしています</title>
+  <text class="label" x="360" y="407" text-anchor="middle">PermissionRequest</text>
+  <text class="body" x="360" y="460" text-anchor="middle">操作の影響を日本語で補足</text>
+<text class="body" x="360" y="494" text-anchor="middle">許可・拒否はホストで判断</text>
+</g><g><title>失敗は未完了として説明する</title>
   <rect x="45" y="600" width="630" height="215" rx="24" fill="#fde8e8" stroke="#b93838" stroke-width="4"/>
-  <text class="label" x="360" y="652" text-anchor="middle">削除（表示例）</text>
-  <text class="body" x="360" y="705" text-anchor="middle">⚠️ 「選択した対象」を</text>
-<text class="body" x="360" y="739" text-anchor="middle">削除しようとしています</text>
+  <text class="label" x="360" y="652" text-anchor="middle">PostToolUseFailure</text>
+  <text class="body" x="360" y="705" text-anchor="middle">処理は完了していません</text>
+<text class="body" x="360" y="739" text-anchor="middle">一部変更の有無は未確認</text>
+<text class="body" x="360" y="773" text-anchor="middle">エラー本文は再掲しません</text>
 </g>
-  <text class="small" x="360" y="910" text-anchor="middle">説明用の表示です。外部操作の権限は発行しません。</text>
+  <text class="small" x="360" y="910" text-anchor="middle">説明用の図です。実際の権限確認はホストが扱います。</text>
 </svg>

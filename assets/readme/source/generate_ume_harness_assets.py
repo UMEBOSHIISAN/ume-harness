@@ -30,8 +30,6 @@ CONTRACT_PATH = Path(__file__).with_name("asset-build.toml")
 CONTRACT = tomllib.loads(CONTRACT_PATH.read_text("utf-8"))
 if CONTRACT.get("schema") != "ume-harness-readme-assets.v1":
     raise SystemExit("unsupported README asset contract")
-PACK_PATH = Path(__file__).resolve().parents[3] / "common-language/packs/ja-JP/p0_concepts.json"
-PACK = json.loads(PACK_PATH.read_text("utf-8"))["concepts"]
 
 WIDTH, HEIGHT = int(CONTRACT["width"]), int(CONTRACT["height"])
 POSTER_WIDTH, POSTER_HEIGHT = int(CONTRACT["poster_width"]), int(CONTRACT["poster_height"])
@@ -77,12 +75,12 @@ COPY = {
         "human": "人間の依頼",
         "request": "この資料をまとめて、\n必要ならREADMEも\nいい感じに直しといて",
         "harness": "UME-HARNESS",
-        "do_title": "確認なしで進めてよい内容",
+        "do_title": "依頼から整理した作業案",
         "do_lines": ("候補の操作を表示", "内容を整理", "質問をまとめる"),
-        "confirm_title": "実行前に確認が必要な操作",
-        "confirm_lines": ("あなたの確認が必要です",),
-        "not_title": "まだ実行していないこと",
-        "not_lines": ("ファイル操作など",),
+        "confirm_title": "人間に残す判断",
+        "confirm_lines": ("対象と範囲を確認する",),
+        "not_title": "実行はホストが担当",
+        "not_lines": ("UMEは権限を発行しない",),
         "done": "プレビュー完了",
         "unchanged": "まだ何も変更していません",
         "scene_titles": (
@@ -100,12 +98,12 @@ COPY = {
         "human": "Human request",
         "request": "Please organize the\nmaterial and improve\nthe README if useful.",
         "harness": "UME-HARNESS",
-        "do_title": "May proceed without confirmation",
+        "do_title": "Proposed work to review",
         "do_lines": ("Show candidate actions", "Organize the request", "Group questions"),
-        "confirm_title": "Needs your confirmation before work",
-        "confirm_lines": ("Your confirmation is required",),
-        "not_title": "Has not run yet",
-        "not_lines": ("File operations",),
+        "confirm_title": "Decisions still needed",
+        "confirm_lines": ("Confirm the target and scope",),
+        "not_title": "Execution belongs to the host",
+        "not_lines": ("UME grants no permission",),
         "done": "Preview complete",
         "unchanged": "Nothing has been changed",
         "scene_titles": (
@@ -288,28 +286,30 @@ def draw_poster(locale: str) -> Image.Image:
 
 RESPONSIBILITY_COPY = {
     "ja": {
-        "title": "人間とAIが仕事を分け合うための責務分担",
+        "title": "責務分担：UME・ホスト・Mothership",
         "human": ("人間：目的を持ち、何を任せるかを決める",),
-        "harness": ("UME-HARNESS", "曖昧な日本語を整理", "確認範囲 / 承認要求", "ローカル作業のプレビュー"),
-        "state_current": "現在の実装",
-        "bridge": "方向性・未実装",
-        "mothership": ("Mothership", "具体的な外部操作を固定", "人間の判断と照合", "同じ台帳履歴内で一度だけ"),
+        "harness": ("UME-HARNESS", "依頼・必要な質問を整理", "権限・実行はホスト標準", "明示的なオフラインJSON出力"),
+        "state_current": "UMEの開発候補",
+        "state_mothership": "別repoの接続候補",
+        "bridge": "明示handoff / 合成ローカル候補",
+        "mothership": ("Mothership", "具体的な操作と判断を照合", "実行報告と独立確認を分ける", "保存した結果をオフラインで再読"),
         "executor": ("別途構成する実行系",),
         "verifier": ("別経路の確認系",),
-        "caption": ("現在の公開版同士に自動接続はありません。", "破線部分は未実装です。"),
-        "legend": ("実線 = 現在実装済み", "破線 = 現在未接続", "外枠 = 別途構成"),
+        "caption": ("公開版への自動接続・実canaryは未確認です。", "実行報告SUCCESSと独立確認UNKNOWNを区別します。"),
+        "legend": ("実線 = 責務の流れ", "破線 = 明示的な候補経路", "外枠 = 別途構成"),
     },
     "en": {
-        "title": "Responsibility split for humans and AI sharing work",
+        "title": "UME, host and Mothership",
         "human": ("Human: holds the purpose", "and decides what to entrust"),
-        "harness": ("UME-HARNESS", "Organize ambiguous Japanese intent", "Visible scope / confirmation", "Local-work preview"),
-        "state_current": "CURRENT",
-        "bridge": "DIRECTION / NOT_SHIPPED",
-        "mothership": ("Mothership", "Freeze one concrete external action", "Check the human decision", "Consume once in one ledger history"),
+        "harness": ("UME-HARNESS", "Organize requests and questions", "Host owns permission and execution", "Explicit offline JSON output"),
+        "state_current": "UME CANDIDATE",
+        "state_mothership": "SEPARATE REPO CANDIDATE",
+        "bridge": "EXPLICIT HANDOFF / LOCAL CANDIDATE",
+        "mothership": ("Mothership", "Bind a decision to one exact action", "Separate execution and verification", "Read retained evidence offline"),
         "executor": ("Separately configured", "executor"),
         "verifier": ("Separate verification", "path"),
-        "caption": ("The current public releases have no automatic runtime bridge.", "The dashed connection is not implemented."),
-        "legend": ("Solid = implemented now", "Dashed = not connected", "Outline = separately configured"),
+        "caption": ("No automatic public integration or live acceptance is claimed.", "Executor SUCCESS and independent UNKNOWN stay separate."),
+        "legend": ("Solid = responsibility flow", "Dashed = explicit candidate route", "Outline = separately configured"),
     },
 }
 
@@ -369,7 +369,7 @@ def responsibility_svg(locale: str) -> str:
   </g>
 
   <rect x="45" y="620" width="630" height="235" rx="26" fill="#dcf1e9" stroke="#16705a" stroke-width="5"/>
-  <text class="state" x="75" y="657">{escape(copy["state_current"])}</text>
+  <text class="state" x="75" y="657">{escape(copy["state_mothership"])}</text>
   <text class="label" x="360" y="693" text-anchor="middle">{escape(copy["mothership"][0])}</text>
   {svg_lines(copy["mothership"][1:], 740)}
 
@@ -388,37 +388,24 @@ def responsibility_svg(locale: str) -> str:
 
 KONJAC_COPY = {
     "ja": {
-        "title": "Translation Konjac — 技術操作を普通の日本語へ",
+        "title": "UMEが返す日本語の説明例",
         "cards": (
-            (
-                "読むだけ",
-                PACK["git.status"]["headline"],
-                ("変更されたファイルがあるか", "確認しています"),
-            ),
-            (
-                "PCの外へ出る（表示例）",
-                PACK["git.push.normal"]["headline"].format(service="GitHub", branch="作業ブランチ"),
-                ("⚠️ ここからPCの外へ出ます。", "GitHub の「作業ブランチ」へ", "履歴を送ろうとしています"),
-            ),
-            (
-                "削除（表示例）",
-                PACK["fs.delete"]["headline"].format(target="選択した対象"),
-                ("⚠️ 「選択した対象」を", "削除しようとしています"),
-            ),
+            ("作業前preview", "作業案と必要な判断を整理する", ("作業案と質問を整理", "この時点では操作しません")),
+            ("PermissionRequest", "許可・拒否はホストの画面で判断", ("操作の影響を日本語で補足", "許可・拒否はホストで判断")),
+            ("PostToolUseFailure", "失敗は未完了として説明する", ("処理は完了していません", "一部変更の有無は未確認", "エラー本文は再掲しません")),
         ),
-        "caption": "説明用の表示です。外部操作の権限は発行しません。",
+        "caption": "説明用の図です。実際の権限確認はホストが扱います。",
     },
     "en": {
-        "title": "Translation Konjac — explain technical actions plainly",
+        "title": "What UME explains",
         "cards": (
-            ("Read only", "Checking whether files have changed", ("Checking whether files", "have changed")),
-            ("Leaves this PC", "About to send history to a remote branch", ("About to send history", "to a remote branch")),
-            ("Deletion", "About to delete the selected target", ("About to delete", "the selected target")),
+            ("Pre-work preview", "Organize work and decisions", ("Proposed work and questions", "No operation is executed")),
+            ("PermissionRequest", "The host owns permission decisions", ("Add Japanese context", "Decide in the host prompt")),
+            ("PostToolUseFailure", "Failure stays incomplete", ("Work is incomplete", "Partial changes are unknown", "Raw errors are omitted")),
         ),
-        "caption": "Presentation only. These cards do not grant External Action Authority.",
+        "caption": "Illustrative only. The host owns permission decisions.",
     },
 }
-
 
 def konjac_svg(locale: str) -> str:
     copy = KONJAC_COPY[locale]

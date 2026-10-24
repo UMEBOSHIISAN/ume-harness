@@ -9,8 +9,11 @@ render_report()の決定論的レンダリングと、headline_state導出の優
 """
 
 import os
+import json
 import subprocess
 import sys
+import tempfile
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "bin"))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "runtime"))
@@ -97,7 +100,8 @@ def test_report_uses_only_the_current_preview_surface():
     }
     result = hla.normalize(llm_output, tier=tp.Tier.TIER_NORMAL)
     report, headline = cli.render_report(result)
-    check("確認なしで進めてよい内容を表示する", "確認なしで進めてよい内容" in report)
+    check("作業案として表示する", "作業案" in report)
+    check("自然文の分類を実行許可として表示しない", "確認なしで進めてよい" not in report)
     check("実行前の確認要求を表示する", "実行前にあなたの確認が必要" in report)
     check("未実行を表示する", "まだ実行されていません" in report)
     check("旧い三分類の看板語を出さない", "しないこと" not in report and "will not do" not in report)
@@ -161,6 +165,134 @@ def test_cli_end_to_end_offline_via_subprocess():
         os.unlink(temp_path)
 
 
+def test_malformed_input_files_fail_cleanly_without_rewriting_the_request():
+    for content in ['{', 'null', '[]', '{"clarification_assessments": []}',
+                    '{"work_type":null,"inferred_intent":"x","inferred_deliverable":"x",'
+                    '"candidate_actions":null,"clarification_assessments":[]}',
+                    '{"work_type":null,"inferred_intent":"x","inferred_deliverable":"x",'
+                    '"candidate_actions":[7],"clarification_assessments":[]}']:
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "model.json")
+            with open(path, "w", encoding="utf-8") as output:
+                output.write(content)
+            proc = subprocess.run([sys.executable, _CLI_PATH, "--llm-output-file", path],
+                                  capture_output=True, text=True)
+            assert proc.returncode == 3, (content, proc.returncode, proc.stdout, proc.stderr)
+            combined = proc.stdout + proc.stderr
+            assert "Traceback" not in combined
+            assert "依頼文をもう少し具体的に" not in combined
+            assert "確認なしで進めてよい" not in combined
+
+
+def test_unreadable_input_file_is_a_machine_failure():
+    with tempfile.TemporaryDirectory() as directory:
+        proc = subprocess.run([sys.executable, _CLI_PATH, "--llm-output-file", directory],
+                              capture_output=True, text=True)
+    assert proc.returncode == 3
+    assert "Traceback" not in proc.stderr
+
+
+def test_preview_model_invocation_restricts_capabilities_before_inference():
+    calls = []
+    flags = ("--safe-mode", "--tools", "--disallowed-tools", "--strict-mcp-config",
+             "--mcp-config", "--disable-slash-commands", "--no-session-persistence",
+             "--no-chrome", "--permission-mode", "--permission-prompts",
+             "--setting-sources", "--settings", "--system-prompt", "--model", "--output-format")
+    valid = {"work_type": None, "inferred_intent": "x", "inferred_deliverable": "x",
+             "candidate_actions": ["資料を確認する"], "clarification_assessments": []}
+
+    def child(argv, **kwargs):
+        calls.append((argv, kwargs))
+        if argv == ["claude", "--help"]:
+            return subprocess.CompletedProcess(argv, 0, "\n".join(flags), "")
+        return subprocess.CompletedProcess(argv, 0, json.dumps({
+            "type": "result", "subtype": "success", "is_error": False,
+            "result": json.dumps(valid)}), "")
+
+    with patch.object(cli.subprocess, "run", side_effect=child):
+        result = cli.call_claude_for_interpretation("依頼", "補足")
+    assert result == valid
+    assert len(calls) == 2
+    argv, options = calls[-1]
+    for flag in flags:
+        assert flag in argv, (flag, argv)
+    assert argv[argv.index("--tools") + 1] == ""
+    assert argv[argv.index("--disallowed-tools") + 1] == "*"
+    assert json.loads(argv[argv.index("--mcp-config") + 1]) == {"mcpServers": {}}
+    assert argv[argv.index("--permission-prompts") + 1] == "none"
+    assert argv[argv.index("--setting-sources") + 1] == ""
+    assert json.loads(argv[argv.index("--settings") + 1])["disableAllHooks"] is True
+    assert "--bare" not in argv
+    assert "--dangerously-skip-permissions" not in argv
+    assert options["input"] == cli.build_intent_prompt("依頼", "補足")
+    assert options.get("shell", False) is False
+
+
+def test_unsupported_preview_host_stops_before_inference():
+    calls = []
+
+    def child(argv, **kwargs):
+        calls.append(argv)
+        return subprocess.CompletedProcess(argv, 0, "--tools --output-format", "")
+
+    with patch.object(cli.subprocess, "run", side_effect=child):
+        try:
+            cli.call_claude_for_interpretation("依頼", "")
+        except RuntimeError:
+            pass
+        else:
+            raise AssertionError("unsupported host accepted")
+    assert calls == [["claude", "--help"]]
+
+
+def test_error_envelopes_never_become_preview_success():
+    flags = " ".join(("--safe-mode", "--tools", "--disallowed-tools", "--strict-mcp-config",
+                      "--mcp-config", "--disable-slash-commands", "--no-session-persistence",
+                      "--no-chrome", "--permission-mode", "--permission-prompts",
+                      "--setting-sources", "--settings", "--system-prompt", "--model", "--output-format"))
+    valid = {"work_type": None, "inferred_intent": "x", "inferred_deliverable": "x",
+             "candidate_actions": [], "clarification_assessments": []}
+    for envelope in [[], None, {"is_error": True, "result": json.dumps(valid)},
+                     {"result": 7}, {"result": json.dumps(valid)},
+                     {"type": "result", "subtype": "success", "result": json.dumps(valid)},
+                     {"type": "result", "subtype": "success", "is_error": False,
+                      "result": json.dumps([valid])}]:
+        def child(argv, **kwargs):
+            return subprocess.CompletedProcess(argv, 0,
+                flags if argv == ["claude", "--help"] else json.dumps(envelope), "")
+        with patch.object(cli.subprocess, "run", side_effect=child):
+            try:
+                cli.call_claude_for_interpretation("依頼", "")
+            except (RuntimeError, ValueError):
+                pass
+            else:
+                raise AssertionError(f"bad envelope accepted: {envelope!r}")
+
+
+def test_managed_retirement_precedes_path_inspection_and_host_call(tmp_path, monkeypatch, capsys):
+    """The CLI rejects managed, including preview, before resolving target state."""
+    monkeypatch.setattr(cli.hss, "get_default_settings_path",
+                        lambda: (_ for _ in ()).throw(AssertionError("retired managed setup must not resolve a default path")))
+    monkeypatch.setattr(cli.hss, "inspect_settings_file",
+                        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("retired managed setup must not inspect settings")))
+    code = cli.handle_setup_command(["--managed", "--preview"])
+
+    assert code == 1
+    assert "managed setup is retired" in capsys.readouterr().err
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_report_distinguishes_online_invocation_from_offline_input():
+    result = hla.normalize({"work_type": None, "inferred_intent": "x", "inferred_deliverable": "x",
+                            "candidate_actions": [], "clarification_assessments": []})
+    offline, _ = cli.render_report(result)
+    assert "解析用モデルのツールは無効です" not in offline
+    assert "オンライン解析の呼び出しには" not in offline
+    online, _ = cli.render_report(result, online_interpretation=True)
+    assert "オンライン解析の呼び出しにはツール無効を指定しました" in online
+    assert "ホスト管理者のポリシー処理は適用対象です" in online
+
+
 def main():
     test_preview_complete_state_when_nothing_needs_approval()
     test_ask_state_takes_priority_over_approval_required()
@@ -170,6 +302,12 @@ def main():
     test_report_never_leaks_forbidden_vocabulary()
     test_tier_is_never_exposed_as_user_facing_argument()
     test_cli_end_to_end_offline_via_subprocess()
+    test_malformed_input_files_fail_cleanly_without_rewriting_the_request()
+    test_unreadable_input_file_is_a_machine_failure()
+    test_preview_model_invocation_restricts_capabilities_before_inference()
+    test_unsupported_preview_host_stops_before_inference()
+    test_error_envelopes_never_become_preview_success()
+    test_report_distinguishes_online_invocation_from_offline_input()
 
     print(f"\n=== {PASS} passed, {FAIL} failed ===")
     sys.exit(1 if FAIL else 0)

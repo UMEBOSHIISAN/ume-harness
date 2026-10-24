@@ -1,24 +1,17 @@
-# Release Manifest (ume-harness v0.1.7 Technical Preview)
+# Development candidate manifest — thin Japanese decision support
 
-This is the v0.1.7 Technical Preview release based on v0.1.6.
-The identity below covers the exact release payload; no existing v0.1.6
-installation is replaced by package installation.
+Unreleased engineering candidate, intentionally different from published v0.1.7.
+Only ume-harness-engineering is canonical; public ume-harness is a generated
+one-way mirror. No push, publication or live settings migration is implied.
 
-`ume-harness-engineering` is the sole canonical source. The public
-`ume-harness` repository is a generated release mirror and is not a supported
-source for edits or reverse synchronization.
+package_manifest.json defines release.payload, install_payload and the immutable
+release_identity.closure. release_promote.py stages only these bytes and does not
+publish or reverse-sync. Existing installations are not overwritten, even with
+--force. Keep old source/prefix until explicit disconnect.
 
-The machine-readable source of truth is `package_manifest.json` →
-`release.payload`. `scripts/release_promote.py` accepts only a clean canonical
-checkout, copies only this explicit closure, generates `RELEASE_IDENTITY.json`,
-runs the test suite, and compares the staged bytes with a clean public mirror.
-It has no publish, push, merge, import, or public-to-engineering operation.
+## Generated release closure
 
-Ambient files, ignored files, untracked scratch, caches, and repository history
-do not become release bytes merely because they exist in the checkout.
-
-Release payload count: 88 files (87 canonical source files plus one generated
-`RELEASE_IDENTITY.json`).
+69 files including one generated RELEASE_IDENTITY.json.
 
 ```
 .gitignore
@@ -49,31 +42,22 @@ SECURITY.md
 SUPPORT_MATRIX.md
 VERSION
 adapters/claude-code/README.md
-adapters/claude-code/lease_gate_runner.py
 adapters/claude-code/permission_request_hook.py
 adapters/claude-code/posttooluse_failure_hook.py
-adapters/claude-code/pretooluse_hook.py
 adapters/claude-code/settings.json.fragment
 bin/ume-harness
 common-language/packs/ja-JP/p0_concepts.json
 common-language/schema/concept_pack.schema.json
 contracts/authority_contract.md
-contracts/autonomous_stop.md
 contracts/task_intake.md
 contracts/tool_policy.md
 design/clarification_impact_contract_v0.md
 domain_descriptor.json
 examples/basic_usage.md
 package_manifest.json
-runtime/activation_updater.py
 runtime/common_language_pack.py
-runtime/decision_state.py
 runtime/hook_setup_service.py
 runtime/human_layer_adapter.py
-runtime/local_execution_gate.py
-runtime/local_execution_lease.py
-runtime/local_execution_lease_state.py
-runtime/stop_adapter.py
 runtime/tool_policy.py
 runtime/translation_konjac.py
 schemas/intent_interpreter_output.schema.json
@@ -86,17 +70,10 @@ tests/case1_acceptance_v2_spec.md
 tests/case1_v2_sampling_contract.md
 tests/test_claude_code_adapter.py
 tests/test_hook_registration_diagnostics.py
-tests/test_audit_boundary_regressions.py
-tests/test_live_search_regression.py
 tests/test_presentation_safety.py
-tests/test_local_work_policy.py
-tests/test_local_workflow_smoke.py
-tests/test_pretooluse_decisions.py
 tests/test_cli.py
+tests/test_preview_handoff.py
 tests/test_human_layer_adapter.py
-tests/test_local_execution_gate.py
-tests/test_local_execution_lease.py
-tests/test_local_execution_lease_state.py
 tests/test_portable_core.py
 tests/test_release_lifecycle.py
 tests/test_translation_konjac.py
@@ -104,56 +81,35 @@ ux/japanese-human-layer/README.md
 ux/japanese-human-layer/contracts/human_request_contract.md
 ux/japanese-human-layer/fixtures/expected_behavior.jsonl
 ux/japanese-human-layer/fixtures/vague_requests_ja.jsonl
-ux/japanese-human-layer/prompts/clarification_batcher.md
-ux/japanese-human-layer/prompts/execution_preview.md
 ux/japanese-human-layer/prompts/intent_interpreter.md
-ux/japanese-human-layer/prompts/result_presenter.md
 ux/japanese-human-layer/tests/test_human_layer.py
 ```
 
-## Source maintenance after v0.1.6
+## Installed candidate
 
-This branch updates the README asset generator dependency from Pillow 11.3.0 to
-12.3.0 and corrects public documentation. The published v0.1.6 tag remains
-unchanged and still records Pillow 11.3.0. Pillow is not in the installed runtime
-payload. The eight regenerated Harness images match their previous bytes.
+28 files; 27 identity members.
+Only the health checker itself is excluded from its recursive root calculation;
+its independent hash remains pinned by the release/ownership verifier.
+Current root/checker anchors are frozen in scripts/health_check.py and
+scripts/release_promote.py after implementation. Historical anchors remain for
+ownership diagnostics, not as current feature claims.
 
-The packaged Human Layer design documents are part of the frozen installed
-identity. Their design goals are not claims that the standalone CLI executes
-work or offers a proceed/revise/cancel loop; see [SUPPORT_MATRIX.md](SUPPORT_MATRIX.md)
-for the implemented behavior and evidence limits.
+-> root: 76a8a54332f8b50face686cd5e8ebef45da17bcf3e493d8602697f1f5aa5425e
+-> checker: 67e225616217a9e00205c717e97cf14a44f48f1751407db5bbcac07535f93a55
 
-## Installed release identity
-
-`package_manifest.json` declares a 40-file install payload. The frozen byte
-identity covers 39 explicit files, including the manifest itself. Only the
-executing `scripts/health_check.py` trust anchor is excluded to avoid a
-self-referential digest. It embeds the expected SHA-256 root and fails unless
-the declared mandatory closure and actual bytes agree.
-
-Mandatory closure members include Translation Konjac, hook setup, all three
-Claude hooks, and the common-language pack and schema.
+The payload contains preview/meaning, the Japanese language pack, two presentation
+hooks and ownership/install diagnostics. Custom PreToolUse/Lease/token/Stop and
+notifier/OSC execution routes are retired. Legacy registration recognition is
+retained solely for diagnosis/explicit disconnect; user state is preserved.
 
 ## Verification
 
-Measured against the v0.1.6 release-candidate bytes on 2026-09-05 (historical count):
-
-```
-python3 -m pytest -q -p no:cacheprovider tests ux/japanese-human-layer/tests
-  -> 324 passed
-```
-
-Current v0.1.7 release identity:
-
-```
+```bash
 python3 scripts/health_check.py --installed-dir . --identity-only --json
-  -> all_passed: true
-  -> root: 6bf4573209f791117e145ac96ee544410827cee0a3a44626be168ee070bede65
-
-python3 scripts/health_check.py --installed-dir . --json
-  -> all_passed: true
-  -> 40 declared install files present
+python3 -m pytest -q -p no:cacheprovider tests ux/japanese-human-layer/tests
 ```
 
-`tests/test_release_lifecycle.py` covers install → setup → offline use → byte
-verification → disconnect → uninstall and asserts all final postconditions.
+Fresh isolated lifecycle tests cover install -> presentation setup -> offline
+preview -> identity/wrapper proof -> disconnect -> uninstall. Source test counts
+are reported against their exact tree. f999276 physical observations are a
+separate historical baseline in SUPPORT_MATRIX.md, not thin-candidate acceptance.

@@ -141,6 +141,190 @@ def test_unknown_action_fails_closed_to_approval():
 
 
 # =========================================================================
+# Root validation and compound candidate provenance
+# =========================================================================
+
+def test_non_object_root_returns_blocked_normalized_interpretation():
+    print("\n[root validation] 非objectのLLM出力は例外ではなくBLOCK結果になる")
+    result = hla.normalize(None)
+    check("NormalizedInterpretationを返す", isinstance(result, hla.NormalizedInterpretation))
+    check("clarification_blocked = True", result.clarification_blocked is True)
+    check("root型エラーの機械可読noteがある", "INVALID_ROOT_TYPE" in result.validation_notes)
+
+
+def test_missing_required_root_fields_returns_validation_notes():
+    print("\n[root validation] 必須root field欠落はBLOCKと機械可読noteになる")
+    result = hla.normalize({"work_type": None, "clarification_assessments": []})
+    check("clarification_blocked = True", result.clarification_blocked is True)
+    expected = {
+        "MISSING_REQUIRED_FIELD:inferred_intent",
+        "MISSING_REQUIRED_FIELD:inferred_deliverable",
+        "MISSING_REQUIRED_FIELD:candidate_actions",
+    }
+    check("欠落field名がnoteに残る", expected.issubset(set(result.validation_notes)), repr(result.validation_notes))
+
+
+def test_wrong_type_root_fields_return_validation_notes_without_classifying_actions():
+    print("\n[root validation] candidate_actionsのnull/数値要素は例外ではなくBLOCKになる")
+    cases = (
+        ({"candidate_actions": None}, "INVALID_FIELD_TYPE:candidate_actions"),
+        ({"candidate_actions": [7]}, "INVALID_FIELD_ITEM_TYPE:candidate_actions[0]"),
+        ({"inferred_intent": 7}, "INVALID_FIELD_TYPE:inferred_intent"),
+        ({"inferred_deliverable": 7}, "INVALID_FIELD_TYPE:inferred_deliverable"),
+    )
+    for overrides, expected_note in cases:
+        payload = {
+            "work_type": None,
+            "inferred_intent": "x",
+            "inferred_deliverable": "x",
+            "candidate_actions": [],
+            "clarification_assessments": [],
+        }
+        payload.update(overrides)
+        result = hla.normalize(payload)
+        check("clarification_blocked = True", result.clarification_blocked is True)
+        check("不正root fieldのnoteがある", expected_note in result.validation_notes, repr(result.validation_notes))
+        check("不正root fieldでは分類しない", result.action_overlay == [])
+
+
+def test_null_work_type_remains_valid_and_unresolved():
+    print("\n[root validation] work_type=nullは既存互換のUNRESOLVEDとして受理する")
+    result = hla.normalize({
+        "work_type": None,
+        "inferred_intent": "x",
+        "inferred_deliverable": "x",
+        "candidate_actions": [],
+        "clarification_assessments": [],
+    })
+    check("work_type=None", result.work_type is None)
+    check("classification_status=UNRESOLVED", result.classification_status == "UNRESOLVED")
+    check("形式エラーでBLOCKしない", result.clarification_blocked is False)
+    check("validation noteなし", result.validation_notes == [])
+
+
+def test_posting_is_external_mutation_and_requires_approval():
+    print("\n[compound/action] 投稿はEXTERNAL_MUTATIONとして承認要求になる")
+    result = hla.normalize({
+        "work_type": "EDIT_CREATE",
+        "inferred_intent": "READMEを直して投稿する",
+        "inferred_deliverable": "更新済みREADME",
+        "candidate_actions": ["Slackに投稿する"],
+        "clarification_assessments": [],
+    })
+    check("投稿を外部変更として分類", result.action_overlay[0].side_effect == tp.SideEffect.EXTERNAL_MUTATION)
+    check("投稿に承認が必要", result.required_human_approvals == ["Slackに投稿する"])
+
+
+def test_japanese_compound_keeps_source_and_does_not_inherit_write_allow():
+    print("\n[compound/action] して分割後もsource_actionを保持し未知部分はALLOWを継承しない")
+    source = "READMEを修正してよしなにする"
+    result = hla.normalize({
+        "work_type": "EDIT_CREATE",
+        "inferred_intent": source,
+        "inferred_deliverable": "README",
+        "candidate_actions": [source],
+        "clarification_assessments": [],
+    })
+    check("2つの候補へ分割", [d.action_text for d in result.action_overlay] == ["READMEを修正する", "よしなにする"])
+    check("全分割候補が元candidateを参照", all(d.source_action == source for d in result.action_overlay))
+    check("既知の修正部分はALLOW", result.action_overlay[0].decision == tp.Decision.ALLOW)
+    check("未知部分は承認要求へfail-closed", result.action_overlay[1].side_effect == tp.SideEffect.UNKNOWN and result.action_overlay[1].decision == tp.Decision.APPROVAL_REQUIRED)
+    check("未知部分を含む元candidateが承認要求に残る", "よしなにする" in result.required_human_approvals)
+
+
+def test_case_marker_toshite_preserves_bounded_write_candidate():
+    source = "結果を報告書として作成する"
+    result = hla.normalize({
+        "work_type": "EDIT_CREATE",
+        "inferred_intent": source,
+        "inferred_deliverable": "報告書",
+        "candidate_actions": [source],
+        "clarification_assessments": [],
+    })
+    assert [d.action_text for d in result.action_overlay] == [source]
+    assert result.action_overlay[0].side_effect == tp.SideEffect.BOUNDED_WRITE
+    assert result.action_overlay[0].source_action == source
+    assert result.required_human_approvals == []
+
+
+def test_case_marker_before_sequential_action_preserves_external_approval():
+    for source in (
+        "結果を報告書として作成して送信する",
+        "結果を報告書として作成してから送信する",
+    ):
+        overlay = hla.compute_authority_overlay([source])
+        assert [d.action_text for d in overlay] == ["結果を報告書として作成する", "送信する"]
+        assert all(d.source_action == source for d in overlay)
+        assert overlay[0].decision == tp.Decision.ALLOW
+        assert overlay[1].side_effect == tp.SideEffect.EXTERNAL_MUTATION
+        assert overlay[1].decision == tp.Decision.APPROVAL_REQUIRED
+
+
+def test_compound_conjunction_allowlist_splits_comma_then_and_ampersand():
+    print("\n[compound/action] allowlist上のcomma/then/and/ampersandだけを分割する")
+    for source in (
+        "READMEを修正する、Slackに投稿する",
+        "READMEを修正する, Slackに投稿する",
+        "READMEを修正する Then Slackに投稿する",
+        "READMEを修正する AND Slackに投稿する",
+        "READMEを修正する & Slackに投稿する",
+    ):
+        result = hla.normalize({
+            "work_type": "EDIT_CREATE",
+            "inferred_intent": source,
+            "inferred_deliverable": "README",
+            "candidate_actions": [source],
+            "clarification_assessments": [],
+        })
+        check("allowlistが2候補に分割", len(result.action_overlay) == 2, source)
+        check("投稿側は承認要求", result.action_overlay[-1].side_effect == tp.SideEffect.EXTERNAL_MUTATION, source)
+
+
+def test_ascii_comma_without_whitespace_is_not_split():
+    print("\n[compound/action] whitespaceなしASCII commaはCSV風candidateとして分割しない")
+    source = "file_a.csv,file_b.csv"
+    result = hla.normalize({
+        "work_type": "RESEARCH",
+        "inferred_intent": "対象を確認する",
+        "inferred_deliverable": "一覧",
+        "candidate_actions": [source],
+        "clarification_assessments": [],
+    })
+    check("CSV風candidateを1件のまま保持", [d.action_text for d in result.action_overlay] == [source])
+    check("元candidateをsource_actionに保持", result.action_overlay[0].source_action == source)
+
+
+def test_ascii_comma_unknown_trailing_action_fails_closed():
+    print("\n[compound/action] ASCII comma後の未知操作は兄弟のALLOWを継承しない")
+    source = "edit README, notify somebody"
+    result = hla.normalize({
+        "work_type": "EDIT_CREATE",
+        "inferred_intent": source,
+        "inferred_deliverable": "README",
+        "candidate_actions": [source],
+        "clarification_assessments": [],
+    })
+    check("ASCII comma+spaceで2候補", [d.action_text for d in result.action_overlay] == ["edit README", "notify somebody"])
+    check("後半UNKNOWNは承認要求", result.action_overlay[-1].side_effect == tp.SideEffect.UNKNOWN and result.action_overlay[-1].decision == tp.Decision.APPROVAL_REQUIRED)
+    check("後半の元candidateを保持", result.action_overlay[-1].source_action == source)
+
+
+def test_destructive_component_remains_most_restrictive_after_split():
+    print("\n[compound/action] compound内の破壊操作は分割後もDESTRUCTIVEを保持する")
+    source = "READMEを修正してファイルを削除する"
+    result = hla.normalize({
+        "work_type": "EDIT_CREATE",
+        "inferred_intent": source,
+        "inferred_deliverable": "README",
+        "candidate_actions": [source],
+        "clarification_assessments": [],
+    })
+    check("破壊操作の分類を保持", any(d.side_effect == tp.SideEffect.DESTRUCTIVE for d in result.action_overlay))
+    check("破壊操作は承認要求", any("削除" in action for action in result.required_human_approvals))
+    check("source_actionを保持", all(d.source_action == source for d in result.action_overlay))
+
+
+# =========================================================================
 # Clarification Impact Contract v0 Rev.2 — Structural Gate
 # =========================================================================
 
@@ -443,6 +627,18 @@ def main():
     test_external_send_always_forces_approval()
     test_read_only_action_no_approval()
     test_unknown_action_fails_closed_to_approval()
+    test_non_object_root_returns_blocked_normalized_interpretation()
+    test_missing_required_root_fields_returns_validation_notes()
+    test_wrong_type_root_fields_return_validation_notes_without_classifying_actions()
+    test_null_work_type_remains_valid_and_unresolved()
+    test_posting_is_external_mutation_and_requires_approval()
+    test_japanese_compound_keeps_source_and_does_not_inherit_write_allow()
+    test_case_marker_toshite_preserves_bounded_write_candidate()
+    test_case_marker_before_sequential_action_preserves_external_approval()
+    test_compound_conjunction_allowlist_splits_comma_then_and_ampersand()
+    test_ascii_comma_without_whitespace_is_not_split()
+    test_ascii_comma_unknown_trailing_action_fails_closed()
+    test_destructive_component_remains_most_restrictive_after_split()
 
     test_assessments_field_missing_blocks()
     test_assessments_field_null_blocks()
