@@ -32,6 +32,7 @@ Mothership連携は別の明示的な入口を要し、自動接続はありま�
 **今後**: 日英README、GIF・静止画・責任分担図を現在の範囲へ更新しました。
 `python3 scripts/health_check.py --installed-dir . --identity-only --json` で配布byte identityを確認できます。
 この照合は署名認証や、実セッションでのhook発火の証明ではありません。
+画像再生成用の依存は、公式security修正版のPillow 13.0.0へ更新しました。実行用install payloadには含まれません。
 
 #### 4. 検証と未確認事項
 
