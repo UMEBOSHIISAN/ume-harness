@@ -10,7 +10,7 @@ Human → 日本語で依頼 → このCLI → Harness(intent_interpreter + huma
   - 内部語彙（ux/japanese-human-layer/contracts/human_request_contract.md §3の
     禁止語彙）を画面に一切出さない。
 
-configured model route: Claude Sonnet 5（support evidence boundaryはSUPPORT_MATRIX.md参照）。
+configured model route: Claude CLIの `sonnet` alias（support evidence boundaryはSUPPORT_MATRIX.md参照）。
 `claude` CLIが必要。
 オフラインテスト用に --llm-output-file で既存のLLM出力JSONを直接読み込むモードもある
 （このモードは `claude` CLI不要・API呼び出しなし）。
@@ -26,9 +26,12 @@ import sys
 sys.dont_write_bytecode = True
 
 import argparse
+import hashlib
 import json
+import math
 import os
 import re
+import stat
 import subprocess
 
 _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -43,12 +46,9 @@ import tool_policy as tp  # noqa: E402
 def _extract_json(text: str):
     if not text:
         return None
-    m = re.search(r"\{.*\}", text, re.DOTALL)
-    if not m:
-        return None
     try:
-        return json.loads(m.group(0))
-    except Exception:
+        return json.loads(text)
+    except (TypeError, ValueError):
         return None
 
 
@@ -66,20 +66,51 @@ def build_intent_prompt(raw_request: str, workspace_context: str) -> str:
 
 
 def call_claude_for_interpretation(raw_request: str, workspace_context: str) -> dict:
-    """`claude -p --model sonnet` を呼び、intent_interpreter.mdスキーマのJSONを得る。
-    これはv0で唯一configuredなmodel routeであり、精度保証を意味しない。"""
+    """Interpret with no model tools or user/project customizations.
+
+    Claude's administrator policy remains a trusted host prerequisite. Safe mode
+    preserves authentication and host policy; this is not OS isolation.
+    """
+    required_flags = (
+        "--safe-mode", "--tools", "--disallowed-tools", "--strict-mcp-config",
+        "--mcp-config", "--disable-slash-commands", "--no-session-persistence",
+        "--no-chrome", "--permission-mode", "--permission-prompts",
+        "--setting-sources", "--settings", "--system-prompt", "--model", "--output-format",
+    )
+    try:
+        support = subprocess.run(["claude", "--help"], capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise RuntimeError("解析用CLIの対応機能を確認できませんでした。") from exc
+    if support.returncode != 0 or any(
+        not re.search(r"(?<![\w-])" + re.escape(flag) + r"(?=[\s,=]|$)", support.stdout)
+        for flag in required_flags
+    ):
+        raise RuntimeError("解析用CLIが必要な機能制限に対応していません。")
+
     prompt = build_intent_prompt(raw_request, workspace_context)
     proc = subprocess.run(
-        ["claude", "-p", "--model", "sonnet", "--output-format", "json", prompt],
-        capture_output=True, text=True, timeout=120,
+        ["claude", "-p", "--model", "sonnet", "--output-format", "json",
+         "--safe-mode", "--tools", "", "--disallowed-tools", "*",
+         "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
+         "--disable-slash-commands", "--no-session-persistence", "--no-chrome",
+         "--permission-mode", "plan", "--permission-prompts", "none",
+         "--setting-sources", "",
+         "--settings", '{"disableAllHooks":true,"disableClaudeAiConnectors":true}',
+         "--system-prompt", "Interpret only the supplied request. Return the requested JSON. Do not execute work."],
+        input=prompt, capture_output=True, text=True, timeout=120,
     )
     if proc.returncode != 0:
-        raise RuntimeError(f"claude CLI呼び出しに失敗しました（exit={proc.returncode}）: {proc.stderr[:300]}")
+        raise RuntimeError(f"解析用CLIが失敗しました（exit={proc.returncode}）。")
     envelope = json.loads(proc.stdout)
+    if (not isinstance(envelope, dict) or envelope.get("type") != "result"
+            or envelope.get("is_error") is not False or envelope.get("subtype") != "success"):
+        raise RuntimeError("解析用CLIから正常な応答を受け取れませんでした。")
     text = envelope.get("result", "")
+    if not isinstance(text, str):
+        raise RuntimeError("解析用CLIの応答形式が不正です。")
     parsed = _extract_json(text)
-    if parsed is None:
-        raise RuntimeError(f"LLM出力からJSONを抽出できませんでした。生出力: {text[:300]!r}")
+    if not isinstance(parsed, dict):
+        raise RuntimeError("解析結果をJSON objectとして読み取れませんでした。")
     return parsed
 
 
@@ -88,7 +119,7 @@ def call_claude_for_interpretation(raw_request: str, workspace_context: str) -> 
 # 準拠（task_class, risk_tags, scope_digest, authority_touch, execution_effect,
 # canonical decision, manifest, HOLD, classifier, gate, verification=PASS 等は使わない）。
 
-def render_report(result: hla.NormalizedInterpretation) -> tuple[str, str]:
+def render_report(result: hla.NormalizedInterpretation, *, online_interpretation: bool = False) -> tuple[str, str]:
     """(表示テキスト, headline_state) を返す。
     headline_state は
     "HELD" | "ASK" | "APPROVAL_REQUIRED" | "PREVIEW_COMPLETE" のいずれか
@@ -99,13 +130,9 @@ def render_report(result: hla.NormalizedInterpretation) -> tuple[str, str]:
     lines.append("")
 
     if result.clarification_blocked:
-        lines.append("⚠️ 依頼の解釈が不完全なため、そのまま進められません。")
-        if result.blocked_clarification_notes:
-            lines.append("以下の点で判断できない部分がありました:")
-            for note in result.blocked_clarification_notes:
-                lines.append(f"  - {note}")
+        lines.append("⚠️ 解析結果の形式を確認できなかったため、内容整理を停止しました。")
+        lines.append("解析処理側の問題です。依頼された操作は実行していません。")
         lines.append("")
-        lines.append("お手数ですが、依頼文をもう少し具体的にして再度お試しください。")
         lines.append("━" * 32)
         return "\n".join(lines), "HELD"
 
@@ -125,18 +152,20 @@ def render_report(result: hla.NormalizedInterpretation) -> tuple[str, str]:
 
     allowed = [
         d.action_text for d in result.action_overlay
-        if d.action_text not in result.required_human_approvals
+        if d.decision == tp.Decision.ALLOW
     ]
     if allowed:
-        lines.append("✅ 以下は確認なしで進めてよい内容です。")
+        lines.append("📝 以下は作業案です。実行時の権限確認は別途行います。")
         lines.append("")
         for a in allowed:
             lines.append(f"  - {a}")
         lines.append("")
 
     lines.append("🛡️ 変更していないもの: 上記いずれの操作も、まだ実行されていません")
-    lines.append("（このHarnessは判断のみを行い、実際のファイル操作等は別途あなたの")
-    lines.append("承認を経て行われます）。")
+    lines.append("実際の操作はツール・対象・効果に基づき、ホスト側で別途確認します。")
+    if online_interpretation:
+        lines.append("オンライン解析の呼び出しにはツール無効を指定しました。")
+        lines.append("ホスト管理者のポリシー処理は適用対象です。")
     lines.append("━" * 32)
 
     if result.surfaced_unknowns:
@@ -152,24 +181,254 @@ def render_report(result: hla.NormalizedInterpretation) -> tuple[str, str]:
 _EXIT_CODES = {"PREVIEW_COMPLETE": 0, "ASK": 1, "APPROVAL_REQUIRED": 2, "HELD": 3}
 
 
+# The handoff output is an opt-in machine seam.  Keep its validation local to
+# this consumer so the ordinary mixed human/debug output remains unchanged.
+_HANDOFF_SCHEMA_VERSION = "ume.preview-handoff.v0"
+_HANDOFF_SOURCES = {"offline_interpretation", "online_interpretation"}
+_HANDOFF_MAX_BYTES = 128 * 1024
+_HANDOFF_MAX_DEPTH = 16
+_HANDOFF_MAX_NODES = 4096
+_HANDOFF_MAX_STRING_CHARS = 16_384
+
+
+class HandoffInputError(ValueError):
+    """The opt-in handoff source or request is not a bounded valid input."""
+
+
+class HandoffOutputError(RuntimeError):
+    """The versioned handoff document was not fully written and flushed."""
+
+
+def _reject_nonfinite(value):
+    raise HandoffInputError("non-finite JSON number")
+
+
+def _reject_duplicate_keys(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise HandoffInputError("duplicate JSON object key")
+        result[key] = value
+    return result
+
+
+def _validate_json_tree(value, *, depth=1, count=None):
+    """Validate the bounded JSON subset before any source digest is accepted."""
+    if count is None:
+        count = [0]
+    count[0] += 1
+    if count[0] > _HANDOFF_MAX_NODES:
+        raise HandoffInputError("JSON node limit exceeded")
+    if depth > _HANDOFF_MAX_DEPTH:
+        raise HandoffInputError("JSON depth limit exceeded")
+
+    if isinstance(value, str):
+        if len(value) > _HANDOFF_MAX_STRING_CHARS:
+            raise HandoffInputError("JSON string limit exceeded")
+        if any(0xD800 <= ord(character) <= 0xDFFF for character in value):
+            raise HandoffInputError("invalid Unicode string")
+    elif isinstance(value, float):
+        if not math.isfinite(value):
+            raise HandoffInputError("non-finite JSON number")
+    elif isinstance(value, dict):
+        for key, child in value.items():
+            if not isinstance(key, str):
+                raise HandoffInputError("JSON object key is not a string")
+            _validate_json_tree(key, depth=depth, count=count)
+            _validate_json_tree(child, depth=depth + 1, count=count)
+    elif isinstance(value, list):
+        for child in value:
+            _validate_json_tree(child, depth=depth + 1, count=count)
+    return count[0]
+
+
+def _canonical_handoff_bytes(value) -> bytes:
+    if not isinstance(value, dict):
+        raise HandoffInputError("interpretation must be a JSON object")
+    try:
+        _validate_json_tree(value)
+    except RecursionError as exc:
+        raise HandoffInputError("JSON depth limit exceeded") from exc
+    try:
+        encoded = json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError, UnicodeError) as exc:
+        raise HandoffInputError("interpretation is not strict UTF-8 JSON") from exc
+    if len(encoded) > _HANDOFF_MAX_BYTES:
+        raise HandoffInputError("JSON byte limit exceeded")
+    return encoded
+
+
+def _parse_strict_handoff_bytes(raw: bytes):
+    if len(raw) > _HANDOFF_MAX_BYTES:
+        raise HandoffInputError("JSON byte limit exceeded")
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise HandoffInputError("input is not UTF-8") from exc
+    try:
+        value = json.loads(
+            text,
+            object_pairs_hook=_reject_duplicate_keys,
+            parse_constant=_reject_nonfinite,
+        )
+    except (TypeError, ValueError, json.JSONDecodeError, RecursionError) as exc:
+        raise HandoffInputError("input is not valid JSON") from exc
+    canonical = _canonical_handoff_bytes(value)
+    return value, canonical
+
+
+def _read_strict_handoff_file(path: str):
+    # This opt-in boundary requires POSIX no-follow, nonblocking reads. Walk
+    # directory descriptors so a parent symlink cannot redirect the input.
+    if (os.name != "posix" or os.open not in os.supports_dir_fd
+            or any(not getattr(os, flag, 0)
+                   for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY"))):
+        raise HandoffInputError("safe interpretation-file reads are unavailable")
+    directory_fd = file_fd = None
+    try:
+        parts = os.path.abspath(path).split(os.sep)[1:]
+        flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
+        directory_fd = os.open(os.sep, flags | os.O_DIRECTORY)
+        for part in parts[:-1]:
+            next_fd = os.open(part, flags | os.O_DIRECTORY, dir_fd=directory_fd)
+            os.close(directory_fd)
+            directory_fd = next_fd
+        file_fd = os.open(parts[-1], flags, dir_fd=directory_fd)
+        metadata = os.fstat(file_fd)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise HandoffInputError("interpretation input must be a regular file")
+        if metadata.st_size > _HANDOFF_MAX_BYTES:
+            raise HandoffInputError("JSON byte limit exceeded")
+        with os.fdopen(file_fd, "rb", closefd=False) as stream:
+            raw = stream.read(_HANDOFF_MAX_BYTES + 1)
+    except OSError as exc:
+        raise HandoffInputError("interpretation file could not be read") from exc
+    finally:
+        if file_fd is not None:
+            os.close(file_fd)
+        if directory_fd is not None:
+            os.close(directory_fd)
+    return _parse_strict_handoff_bytes(raw)
+
+
+def _request_utf8_bytes(raw_request: str) -> bytes:
+    if not isinstance(raw_request, str) or not raw_request.strip():
+        raise HandoffInputError("request must be nonempty")
+    if len(raw_request) > _HANDOFF_MAX_STRING_CHARS:
+        raise HandoffInputError("request string limit exceeded")
+    try:
+        encoded = raw_request.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise HandoffInputError("request is not valid UTF-8") from exc
+    if len(encoded) > _HANDOFF_MAX_BYTES:
+        raise HandoffInputError("request byte limit exceeded")
+    return encoded
+
+
+def build_handoff_document(
+    raw_request: str,
+    interpretation: dict,
+    *,
+    source: str,
+    workspace_context: str = "",
+) -> dict:
+    """Build the fixed preview handoff document from a validated interpretation."""
+    if source not in _HANDOFF_SOURCES:
+        raise HandoffInputError("unsupported interpretation source")
+    request_bytes = _request_utf8_bytes(raw_request)
+    interpretation_bytes = _canonical_handoff_bytes(interpretation)
+
+    if not isinstance(interpretation.get("candidate_actions"), list) or any(
+        not isinstance(action, str) for action in interpretation["candidate_actions"]
+    ):
+        raise HandoffInputError("candidate_actions must be a list of strings")
+
+    result = hla.normalize(
+        interpretation,
+        tier=tp.Tier.TIER_NORMAL,
+        workspace_context=workspace_context,
+    )
+    if result.clarification_blocked:
+        raise HandoffInputError("interpretation is structurally blocked")
+
+    return {
+        "schema_version": _HANDOFF_SCHEMA_VERSION,
+        "source": source,
+        "request_sha256": hashlib.sha256(request_bytes).hexdigest(),
+        "interpretation_sha256": hashlib.sha256(interpretation_bytes).hexdigest(),
+        "work_type": result.work_type,
+        "classification_status": result.classification_status,
+        # Keep the original interpretation strings.  The normalized overlay
+        # may split compound phrases for display, but that is not this seam's
+        # source identity.
+        "candidate_actions": list(interpretation["candidate_actions"]),
+        "required_human_approvals": list(result.required_human_approvals),
+        "surfaced_unknowns": list(result.surfaced_unknowns),
+        "clarification_blocked": False,
+        "authority": False,
+        "execution": False,
+    }
+
+
+def write_handoff_json(document: dict, stream) -> None:
+    """Write one compact JSON document and flush it, rejecting partial output."""
+    try:
+        text = json.dumps(
+            document,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            allow_nan=False,
+        ) + "\n"
+        # Real stdout exposes a binary buffer: bypass its locale encoding.
+        # Text-only streams (for in-process callers) retain Unicode strings.
+        output = getattr(stream, "buffer", None)
+        payload = text.encode("utf-8") if output is not None else text
+        if output is None:
+            output = stream
+        written = output.write(payload)
+        if type(written) is not int or written != len(payload):
+            raise HandoffOutputError("handoff output was short-written")
+        output.flush()
+    except HandoffOutputError:
+        raise
+    except (OSError, TypeError, ValueError, UnicodeError) as exc:
+        raise HandoffOutputError("handoff output could not be flushed") from exc
+
+
+def _handoff_headline(document: dict) -> str:
+    if document["clarification_blocked"]:
+        return "HELD"
+    if document["surfaced_unknowns"]:
+        return "ASK"
+    if document["required_human_approvals"]:
+        return "APPROVAL_REQUIRED"
+    return "PREVIEW_COMPLETE"
+
+
 import hook_setup_service as hss  # noqa: E402
 
 
 def handle_setup_command(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(
         prog="ume-harness setup",
-        description="Claude Code の日本語通訳（翻訳こんにゃく）フックを安全に接続・切断します。",
+        description="Claude Code の日本語説明フックを安全に接続・切断します。",
     )
     parser.add_argument("--yes", "-y", action="store_true", help="確認プロンプトをスキップして自動承認する")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--preview", action="store_true", help="設定のプレビューのみ表示し、変更は行わない")
-    mode.add_argument("--disconnect", action="store_true", help="ume-harness が所有する3本のフックだけを切断する")
+    mode.add_argument("--disconnect", action="store_true", help="UMEの説明フックと旧版の完全一致登録だけを切断する")
     parser.add_argument("--settings-path", default=None, help="対象の settings.json パス（テスト用）")
-    parser.add_argument("--managed", action="store_true", help="PreToolUseによる実行制限も明示的に接続する（通常は表示用2本）")
+    parser.add_argument("--managed", action="store_true", help="廃止済みの旧managed接続（互換エラー）")
     args = parser.parse_args(argv)
-    if args.managed and args.disconnect:
-        parser.error("--managed と --disconnect は併用できません")
-
+    if args.managed:
+        print(hss.MANAGED_RETIREMENT_MESSAGE, file=sys.stderr)
+        return 1
     target_path = args.settings_path or hss.get_default_settings_path()
 
     if args.disconnect:
@@ -182,14 +441,14 @@ def handle_setup_command(argv: list[str]) -> int:
             return 1
 
     hook_paths = hss.get_adapter_hook_paths(_PKG_ROOT)
-    if not args.managed:
-        try:
-            inventory = hss.inspect_settings_file(target_path, _PKG_ROOT)
-        except Exception as exc:
-            print(f"❌ 設定を確認できません: {exc}", file=sys.stderr)
-            return 1
-        if not any(r["owned"] and r["event"] == "PreToolUse" for r in inventory["registrations"]):
-            hook_paths.pop("PreToolUse")
+    try:
+        inventory = hss.inspect_settings_file(target_path, _PKG_ROOT)
+    except Exception as exc:
+        print(f"❌ 設定を確認できません: {exc}", file=sys.stderr)
+        return 1
+    if inventory.get("retired_pretooluse"):
+        print(hss.LEGACY_PRETOOLUSE_HOLD_MESSAGE, file=sys.stderr)
+        return 1
     preview_text = hss.generate_preview(target_path, hook_paths)
     print(preview_text)
 
@@ -225,7 +484,7 @@ def main(argv=None) -> int:
 
     parser = argparse.ArgumentParser(
         prog="ume-harness",
-        description="日本語の曖昧な依頼を、Authority Overlay + Clarification Impact ContractでpreviewするCLI（v0・Claude Sonnet 5 route）。",
+        description="日本語の曖昧な依頼を実行せずpreviewするCLI（v0）。",
     )
     parser.add_argument("request", nargs="?", help="日本語の依頼文（例: 'この資料まとめといて'）")
     parser.add_argument("--request", dest="request_flag", help="依頼文（位置引数の代わりに使用可）")
@@ -234,26 +493,63 @@ def main(argv=None) -> int:
         "--llm-output-file", default=None,
         help="claude CLI呼び出しの代わりに、既存のLLM出力JSONファイルを読み込む（オフラインテスト用・API呼び出しなし）",
     )
-    parser.add_argument("--json", action="store_true", help="自然語レポートに加え、内部状態をJSONでも出力する（デバッグ用）")
+    output_mode = parser.add_mutually_exclusive_group()
+    output_mode.add_argument("--json", action="store_true", help="自然語レポートに加え、内部状態をJSONでも出力する（デバッグ用）")
+    output_mode.add_argument(
+        "--handoff-json",
+        action="store_true",
+        help="正規化済みのpreview handoff JSONだけを出力する（オプトイン・非実行）",
+    )
     args = parser.parse_args(argv)
 
     raw_request = args.request_flag or args.request
+    if args.handoff_json and (not isinstance(raw_request, str) or not raw_request.strip()):
+        print("❌ 解析処理に失敗しました: 依頼文を指定してください。", file=sys.stderr)
+        return _EXIT_CODES["HELD"]
     if not raw_request and not args.llm_output_file:
         parser.error("依頼文を指定してください（位置引数または --request）。または `ume-harness setup` でフックを設定してください。")
 
-    if args.llm_output_file:
-        with open(args.llm_output_file, encoding="utf-8") as f:
-            llm_output = json.load(f)
-    else:
-        try:
-            llm_output = call_claude_for_interpretation(raw_request, args.context)
-        except Exception as e:
-            print(f"❌ 依頼の解釈に失敗しました: {e}", file=sys.stderr)
+    if args.handoff_json:
+        if not args.llm_output_file:
+            print(
+                "❌ handoff previewは --llm-output-file のオフライン解釈だけを受け付けます。",
+                file=sys.stderr,
+            )
             return _EXIT_CODES["HELD"]
+        try:
+            if args.llm_output_file:
+                llm_output, _ = _read_strict_handoff_file(args.llm_output_file)
+                source = "offline_interpretation"
+            document = build_handoff_document(
+                raw_request,
+                llm_output,
+                source=source,
+                workspace_context=args.context,
+            )
+            write_handoff_json(document, sys.stdout)
+        except (HandoffInputError, OSError, TypeError, ValueError, RuntimeError, subprocess.TimeoutExpired) as exc:
+            # Handoff mode is JSON-only on success.  A malformed or partial
+            # source is HELD and never becomes an accepted JSON document.
+            detail = str(exc) if isinstance(exc, HandoffInputError) else "入力または出力を確認できませんでした。"
+            print(f"❌ handoff previewを受け付けられませんでした: {detail}", file=sys.stderr)
+            return _EXIT_CODES["HELD"]
+        return _EXIT_CODES[_handoff_headline(document)]
 
-    # Tierは常にTIER_NORMAL固定（P0-3: 利用者に選ばせない）。
-    result = hla.normalize(llm_output, tier=tp.Tier.TIER_NORMAL, workspace_context=args.context)
-    report, headline = render_report(result)
+    try:
+        if args.llm_output_file:
+            with open(args.llm_output_file, encoding="utf-8") as f:
+                llm_output = json.load(f)
+        else:
+            llm_output = call_claude_for_interpretation(raw_request, args.context)
+        # Tierは常にTIER_NORMAL固定（P0-3: 利用者に選ばせない）。
+        result = hla.normalize(llm_output, tier=tp.Tier.TIER_NORMAL, workspace_context=args.context)
+    except (OSError, ValueError, TypeError, RuntimeError, subprocess.TimeoutExpired) as exc:
+        detail = str(exc) if isinstance(exc, RuntimeError) else "入力または応答を確認できませんでした。"
+        print(f"❌ 解析処理に失敗しました: {detail} 依頼された操作は実行していません。", file=sys.stderr)
+        if args.json:
+            print(json.dumps({"headline_state": "HELD", "error": "interpretation_failed"}, ensure_ascii=False))
+        return _EXIT_CODES["HELD"]
+    report, headline = render_report(result, online_interpretation=not args.llm_output_file)
     print(report)
 
     if args.json:

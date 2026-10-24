@@ -35,6 +35,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 import sys
 import os
+import re
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import tool_policy as tp  # noqa: E402
@@ -46,7 +47,7 @@ VALID_WORK_TYPES = {"RESEARCH", "EDIT_CREATE", "ORGANIZE"}
 _DESTRUCTIVE_KEYWORDS = ["削除", "消去", "消す", "破棄", "上書き", "フォーマット", "delete", "remove"]
 _AUTHORITY_TOUCH_KEYWORDS = ["設定変更", "権限変更", "ポリシー変更", "承認の変更", "policy", "permission"]
 _EXTERNAL_MUTATION_KEYWORDS = [
-    "送信", "送付", "公開", "発送", "メール", "購入", "支払い",
+    "送信", "送付", "公開", "発送", "投稿", "メール", "購入", "支払い",
     "publish", "post", "send", "purchase", "pay",
 ]
 _BOUNDED_WRITE_KEYWORDS = ["作成", "編集", "修正", "更新", "まとめ", "追記", "write", "edit", "create"]
@@ -73,6 +74,83 @@ class ActionDecision:
     action_text: str
     side_effect: tp.SideEffect
     decision: tp.Decision
+    source_action: str | None = None
+
+    def __post_init__(self):
+        # Keep direct construction backwards-compatible while making every
+        # split decision traceable to the original candidate.
+        if self.source_action is None:
+            self.source_action = self.action_text
+
+
+_COMPOUND_SPLIT_PATTERNS = (
+    # Only the explicit Japanese sequential-action form is split.  The
+    # left-hand verb stem is completed for human-readable preview output.
+    # Keep the case-marker construction として atomic; a later sequential
+    # boundary can still match. This is not a general Japanese parser.
+    re.compile(r"^(?P<left>.+?)(?<!と)して(?:から)?(?P<right>.+)$"),
+    re.compile(r"^(?P<left>.+?)[、，]\s*(?P<right>.+)$"),
+    # ASCII comma requires whitespace after it so CSV-like candidates stay
+    # atomic.
+    re.compile(r"^(?P<left>.+?),\s+(?P<right>.+)$"),
+    re.compile(r"^(?P<left>.+?)\s+(?:then|and)\s+(?P<right>.+)$", re.IGNORECASE),
+    re.compile(r"^(?P<left>.+?)\s*&\s*(?P<right>.+)$"),
+)
+
+
+def _complete_japanese_left_action(text: str) -> str:
+    """Complete the common Japanese して split for preview readability."""
+    text = text.strip()
+    if text and not text.endswith(("する", "した", "します")):
+        return f"{text}する"
+    return text
+
+
+def split_candidate_action(action_text: str) -> list[str]:
+    """Split only the explicitly supported compound-action boundaries.
+
+    Natural-language parsing is intentionally out of scope.  A candidate that
+    does not match one of the allowlisted boundaries is classified as-is.
+    """
+    parts = [action_text]
+    changed = True
+    while changed:
+        changed = False
+        next_parts: list[str] = []
+        for part in parts:
+            match = None
+            matched_japanese_sequential = False
+            for pattern_index, pattern in enumerate(_COMPOUND_SPLIT_PATTERNS):
+                match = pattern.match(part)
+                if match is not None:
+                    matched_japanese_sequential = pattern_index == 0
+                    break
+            if match is None:
+                next_parts.append(part)
+                continue
+            left = match.group("left").strip()
+            right = match.group("right").strip()
+            if not left or not right or (left == part and right == part):
+                next_parts.append(part)
+                continue
+            if matched_japanese_sequential:
+                left = _complete_japanese_left_action(left)
+            next_parts.extend((left, right))
+            changed = True
+        parts = next_parts
+    return parts
+
+
+_SIDE_EFFECT_PRIORITY = {
+    tp.SideEffect.READ_ONLY: 0,
+    tp.SideEffect.BOUNDED_WRITE: 1,
+    tp.SideEffect.EXTERNAL_MUTATION: 2,
+    tp.SideEffect.AUTHORITY_TOUCH: 3,
+    tp.SideEffect.DESTRUCTIVE: 4,
+    # UNKNOWN is already approval-required; do not let it erase a stronger
+    # source classification when a split boundary is only partially parsed.
+    tp.SideEffect.UNKNOWN: 2,
+}
 
 
 def compute_authority_overlay(
@@ -90,9 +168,41 @@ def compute_authority_overlay(
     Authority Overlayがあるから大丈夫」という主張はしない。"""
     results = []
     for action in candidate_actions:
-        se = classify_candidate_action(action)
-        d = tp.decide(tier, se)
-        results.append(ActionDecision(action_text=action, side_effect=se, decision=d))
+        source_effect = classify_candidate_action(action)
+        split_actions = split_candidate_action(action)
+        action_results = []
+        for split_action in split_actions:
+            se = classify_candidate_action(split_action)
+            d = tp.decide(tier, se)
+            action_results.append(
+                ActionDecision(
+                    action_text=split_action,
+                    side_effect=se,
+                    decision=d,
+                    source_action=action,
+                )
+            )
+
+        # Preserve a stronger classification found on the unsplit source if
+        # a conservative boundary did not retain its keyword in a component.
+        strongest_component = max(
+            action_results,
+            key=lambda item: _SIDE_EFFECT_PRIORITY[item.side_effect],
+            default=None,
+        )
+        if (
+            strongest_component is not None
+            and _SIDE_EFFECT_PRIORITY[source_effect]
+            > _SIDE_EFFECT_PRIORITY[strongest_component.side_effect]
+        ):
+            first = action_results[0]
+            action_results[0] = ActionDecision(
+                action_text=first.action_text,
+                side_effect=source_effect,
+                decision=tp.decide(tier, source_effect),
+                source_action=action,
+            )
+        results.extend(action_results)
     return results
 
 
@@ -235,7 +345,7 @@ def normalize_work_type(raw_work_type) -> tuple[str | None, str]:
     それ以外（None・空文字・"unresolved"等の逸脱値・パイプ区切り等）は
     work_type=None・classification_status=UNRESOLVEDへ正規化する。
     UNRESOLVEDを第4のwork_type値として許可しない。"""
-    if raw_work_type in VALID_WORK_TYPES:
+    if isinstance(raw_work_type, str) and raw_work_type in VALID_WORK_TYPES:
         return raw_work_type, "RESOLVED"
     return None, "UNRESOLVED"
 
@@ -252,16 +362,90 @@ class NormalizedInterpretation:
     action_overlay: list[ActionDecision] = field(default_factory=list)
     clarification_blocked: bool = False
     blocked_clarification_notes: list[str] = field(default_factory=list)
+    validation_notes: list[str] = field(default_factory=list)
+
+
+_REQUIRED_ROOT_FIELDS = (
+    "work_type",
+    "inferred_intent",
+    "inferred_deliverable",
+    "candidate_actions",
+    "clarification_assessments",
+)
+
+
+def validate_root_interpretation(llm_output) -> list[str]:
+    """Return stable machine-readable notes for malformed model root output."""
+    if not isinstance(llm_output, dict):
+        return ["INVALID_ROOT_TYPE"]
+
+    notes: list[str] = []
+    for field_name in _REQUIRED_ROOT_FIELDS:
+        if field_name not in llm_output:
+            notes.append(f"MISSING_REQUIRED_FIELD:{field_name}")
+
+    if "work_type" in llm_output:
+        raw_work_type = llm_output["work_type"]
+        # None is a valid unresolved classification.  Other strings retain
+        # the existing normalize_work_type compatibility behavior.
+        if raw_work_type is not None and not isinstance(raw_work_type, str):
+            notes.append("INVALID_FIELD_TYPE:work_type")
+
+    for field_name in ("inferred_intent", "inferred_deliverable"):
+        if field_name in llm_output and not isinstance(llm_output[field_name], str):
+            notes.append(f"INVALID_FIELD_TYPE:{field_name}")
+
+    if "candidate_actions" in llm_output:
+        actions = llm_output["candidate_actions"]
+        if not isinstance(actions, list):
+            notes.append("INVALID_FIELD_TYPE:candidate_actions")
+        else:
+            notes.extend(
+                f"INVALID_FIELD_ITEM_TYPE:candidate_actions[{index}]"
+                for index, action in enumerate(actions)
+                if not isinstance(action, str)
+            )
+
+    if "clarification_assessments" in llm_output and not isinstance(
+        llm_output["clarification_assessments"], list
+    ):
+        notes.append("INVALID_FIELD_TYPE:clarification_assessments")
+
+    return notes
+
+
+def _blocked_normalized_interpretation(llm_output, validation_notes: list[str]) -> NormalizedInterpretation:
+    """Build a safe result without classifying malformed candidate actions."""
+    raw_work_type = llm_output.get("work_type") if isinstance(llm_output, dict) else None
+    work_type, status = normalize_work_type(raw_work_type)
+    inferred_intent = llm_output.get("inferred_intent", "") if isinstance(llm_output, dict) else ""
+    inferred_deliverable = llm_output.get("inferred_deliverable", "") if isinstance(llm_output, dict) else ""
+    return NormalizedInterpretation(
+        work_type=work_type,
+        classification_status=status,
+        inferred_intent=inferred_intent if isinstance(inferred_intent, str) else "",
+        inferred_deliverable=inferred_deliverable if isinstance(inferred_deliverable, str) else "",
+        required_human_approvals=[],
+        surfaced_unknowns=[],
+        action_overlay=[],
+        clarification_blocked=True,
+        blocked_clarification_notes=list(validation_notes),
+        validation_notes=list(validation_notes),
+    )
 
 
 def normalize(
-    llm_output: dict, tier: tp.Tier = tp.Tier.TIER_NORMAL, workspace_context: str = ""
+    llm_output: object, tier: tp.Tier = tp.Tier.TIER_NORMAL, workspace_context: str = ""
 ) -> NormalizedInterpretation:
     """LLM生出力（work_type, inferred_intent, inferred_deliverable,
     candidate_actions, clarification_assessments）を受け取り、Authority Overlay +
     Clarification Impact判定 + work_type正規化を適用した結果を返す。
     workspace_contextは現バージョンでは未使用（Rev.1のCONTENT_SCOPE条件付きprune
     ロジックと共に廃止。引数はプロトタイプ互換のため残す）。"""
+    validation_notes = validate_root_interpretation(llm_output)
+    if validation_notes:
+        return _blocked_normalized_interpretation(llm_output, validation_notes)
+
     work_type, status = normalize_work_type(llm_output.get("work_type"))
     candidate_actions = llm_output.get("candidate_actions", [])
     raw_assessments = llm_output.get("clarification_assessments")

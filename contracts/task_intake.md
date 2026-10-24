@@ -1,31 +1,21 @@
-# Task Intake Contract (Portable — Decision Batching)
+# Task intake — decision-support preview
 
-> 目的: タスク着手後の「細切れ確認」「都度の承認往復」を根絶し、着手前に1回で必要な判断を確定させる。
-> 適用範囲: ume-harness Core | 状態: CONTRACT IMPLEMENTED / FULL HOST LIFECYCLE NOT WIRED
-> 由来: 元実装（task_intake_contract.md）は個人パス・個人語彙を含まない、既に汎用的な内容
-> だったため、そのまま採用する（監査で DROP 対象なしと判定済み）。
+The preview organizes proposed work, clarification questions with material
+impact, and suggested human decisions. It should not make a person choose
+technical diagnostics already answerable from available context.
 
-## 着手前3大抽出項目（Intake Extraction）
+The current CLI ends after the report. It does not start a worker, enforce
+host-wide question batching, issue authority, or monitor execution/lifecycle.
+Internal debug fields keep their existing names for compatibility:
 
-タスク着手時（または提案時）、コードを書く/実行する前に必ず以下の3項目を構造化して抽出する。
+| Field | Meaning |
+|---|---|
+| work_type/classification_status | Interpretation category and resolution state |
+| required_human_approvals | Suggested pre-execution human decisions, not grants |
+| surfaced_unknowns | Material clarification questions |
+| pruned_unknowns | Questions removed by deterministic impact processing |
+| clarification_blocked | Invalid assessment structure; processing stopped |
+| headline_state | Preview/clarification/processing state, not execution status |
 
-```
-1. required_human_decisions   人間の方針決定が必要な項目
-2. required_approvals         Execution Gate / 変更が必要な保護対象（authority_contract.md参照）
-3. unresolved_unknowns        リポジトリ・入力内に証拠がなく、人間に確認すべき前提
-```
-
-## 一括提示の規律（Decision Batching Rule）
-
-- **一括提示**: 未解決の `required_human_decisions` / `required_approvals` がある場合、
-  作業途中で1つずつ質問せず、着手前の最初のターンでまとめて1画面で提示する
-- **細切れ質問の禁止**: 複数ターンに分けて連続質問することは禁止
-- **即時実行の条件**: 上記3項目がすべて解決済み（または事前合意済み）の場合は、
-  追加の質問ターンを挟まず直ちに実行へ入る
-
-## Runtime status
-
-Human Layerのprompt / normalized outputはclarificationとapprovalの一括提示に使える構造を
-実装している。一方、現行CLIは解釈とpreviewまででworker executionを開始せず、Claude host
-全体の質問turnを監視・強制するintake hookも持たない。本契約はdecision-batchingのcanonical
-規律とCore入出力形を定義するが、host-wide lifecycle enforcementを主張しない。
+Malformed input stops as a processing failure. A valid unresolved work type may
+remain null. Model-proposed approvals never overrule deterministic action meaning.

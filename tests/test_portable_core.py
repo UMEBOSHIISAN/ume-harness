@@ -3,8 +3,7 @@
 test_portable_core.py — ume-harness Portable Core 静的テスト
 
 Phase 2（静的テストのみ）。LLMは一切呼び出さない。
-contracts/tool_policy.md・contracts/authority_contract.md・contracts/autonomous_stop.md の
-仕様どおりに runtime/ が実装されているかを検証する。
+tool_policy の純粋な分類表と、公開アセット／リリース境界を検証する。
 
 japanese-human-layer の実LLM behavioral test（Phase 3）はここに含めない
 （fixture整合性テストと実LLM挙動テストを混同しない、という監査結果を反映）。
@@ -12,38 +11,15 @@ japanese-human-layer の実LLM behavioral test（Phase 3）はここに含めな
 
 import hashlib
 import json
-import multiprocessing
 import os
 import re
-import stat
 import struct
 import subprocess
 import sys
-import tempfile
-import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "runtime"))
 
 import tool_policy as tp  # noqa: E402
-import stop_adapter as sa  # noqa: E402
-
-
-def _consume_token_with_load_delay(store_path, start_barrier, result_queue):
-    """Synchronize consumers so an unlocked read-modify-write is observable."""
-    store = tp.TokenStore(store_path)
-    original_load = store._load
-
-    def delayed_load():
-        data = original_load()
-        time.sleep(0.2)
-        return data
-
-    store._load = delayed_load
-    start_barrier.wait()
-    try:
-        result_queue.put(("result", store.consume("impl_write", "scope")))
-    except Exception as exc:  # pragma: no cover - surfaced by the parent assertion
-        result_queue.put(("error", repr(exc)))
 
 PASS = 0
 FAIL = 0
@@ -174,408 +150,6 @@ def test_unknown_side_effect_fail_closed():
         )
 
 
-def test_classify_command_side_effect():
-    print("\n[tool_policy] classify_command_side_effect() の動詞分類")
-    check("rm -> DESTRUCTIVE", tp.classify_command_side_effect(["rm"]) == tp.SideEffect.DESTRUCTIVE)
-    check("send -> EXTERNAL_MUTATION", tp.classify_command_side_effect(["send"]) == tp.SideEffect.EXTERNAL_MUTATION)
-    check(
-        "edit_settings -> AUTHORITY_TOUCH",
-        tp.classify_command_side_effect(["edit_settings"]) == tp.SideEffect.AUTHORITY_TOUCH,
-    )
-    check("read -> READ_ONLY", tp.classify_command_side_effect(["read"]) == tp.SideEffect.READ_ONLY)
-    check("(empty) -> UNKNOWN", tp.classify_command_side_effect([]) == tp.SideEffect.UNKNOWN)
-    check("mystery_verb -> UNKNOWN", tp.classify_command_side_effect(["mystery_verb"]) == tp.SideEffect.UNKNOWN)
-
-
-def test_token_store_consumes_single_earliest_token():
-    print("\n[tool_policy] TokenStore.consume() は最も早く期限切れになる1件だけを消費する")
-    with tempfile.TemporaryDirectory() as d:
-        store_path = os.path.join(d, "tokens.json")
-        now = int(time.time())
-        import json
-
-        with open(store_path, "w", encoding="utf-8") as f:
-            json.dump(
-                {
-                    "tokens": [
-                        {"action": "impl_write", "scope_target": "a", "expires_epoch": now + 1000, "uses_remaining": 3},
-                        {"action": "impl_write", "scope_target": "b", "expires_epoch": now + 10, "uses_remaining": 5},
-                    ]
-                },
-                f,
-            )
-        store = tp.TokenStore(store_path)
-        ok = store.consume("impl_write")
-        check("consume() returns True when a valid token exists", ok is True)
-
-        with open(store_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        earliest = next(t for t in data["tokens"] if t["scope_target"] == "b")
-        other = next(t for t in data["tokens"] if t["scope_target"] == "a")
-        check(
-            "earliest-expiring token was decremented",
-            earliest["uses_remaining"] == 4,
-            f"got {earliest['uses_remaining']}",
-        )
-        check(
-            "other token untouched (no mass-decrement bug)",
-            other["uses_remaining"] == 3,
-            f"got {other['uses_remaining']}",
-        )
-
-
-def test_token_store_expired_token_not_consumed():
-    print("\n[tool_policy] 期限切れトークンは消費されない")
-    with tempfile.TemporaryDirectory() as d:
-        store_path = os.path.join(d, "tokens.json")
-        now = int(time.time())
-        import json
-
-        with open(store_path, "w", encoding="utf-8") as f:
-            json.dump(
-                {"tokens": [{"action": "impl_write", "scope_target": "a", "expires_epoch": now - 10, "uses_remaining": 3}]},
-                f,
-            )
-        store = tp.TokenStore(store_path)
-        ok = store.consume("impl_write")
-        check("consume() returns False for expired-only tokens", ok is False)
-
-
-def test_token_store_rejects_unscoped_token_for_scoped_consume():
-    print("\n[tool_policy] scopeなしの保存tokenはscoped consumeのwildcardにならない")
-    with tempfile.TemporaryDirectory() as d:
-        store_path = os.path.join(d, "tokens.json")
-        now = int(time.time())
-        with open(store_path, "w", encoding="utf-8") as f:
-            json.dump(
-                {
-                    "tokens": [
-                        {
-                            "action": "impl_write",
-                            "scope_target": None,
-                            "expires_epoch": now + 1000,
-                            "uses_remaining": 1,
-                        }
-                    ]
-                },
-                f,
-            )
-
-        store = tp.TokenStore(store_path)
-        check(
-            "scoped consume rejects null-scope token",
-            store.consume("impl_write", "scope") is False,
-        )
-        with open(store_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        check(
-            "rejected null-scope token remains unused",
-            data["tokens"][0]["uses_remaining"] == 1,
-        )
-
-
-def test_token_store_rejects_malformed_documents_without_authorizing():
-    print("\n[tool_policy] malformed token storeは例外経由でもALLOWしない")
-    malformed_documents = [
-        ("{not-json", "invalid JSON"),
-        ([], "non-object root"),
-        ({"tokens": {}}, "tokens is not an array"),
-        (
-            {
-                "tokens": [
-                    {
-                        "action": "impl_write",
-                        "scope_target": "scope",
-                        "expires_epoch": "future",
-                        "uses_remaining": 1,
-                    }
-                ]
-            },
-            "invalid expiry type",
-        ),
-        (
-            {
-                "tokens": [
-                    {
-                        "action": "impl_write",
-                        "scope_target": "scope",
-                        "expires_epoch": int(time.time()) + 1000,
-                        "uses_remaining": -1,
-                    }
-                ]
-            },
-            "negative remaining uses",
-        ),
-    ]
-
-    with tempfile.TemporaryDirectory() as d:
-        for document, label in malformed_documents:
-            store_path = os.path.join(d, f"{label.replace(' ', '_')}.json")
-            with open(store_path, "w", encoding="utf-8") as f:
-                if isinstance(document, str):
-                    f.write(document)
-                else:
-                    json.dump(document, f)
-            check(
-                f"{label} fails closed",
-                tp.TokenStore(store_path).consume("impl_write", "scope") is False,
-            )
-
-
-def test_token_store_rejects_symlink_and_hardlink_aliases():
-    print("\n[tool_policy] token storeのsymlink/hardlink別名はlock迂回になるため拒否する")
-    now = int(time.time()) + 1000
-
-    with tempfile.TemporaryDirectory() as d:
-        real_path = os.path.join(d, "tokens.json")
-        alias_path = os.path.join(d, "tokens-symlink.json")
-        with open(real_path, "w", encoding="utf-8") as f:
-            json.dump(
-                {
-                    "tokens": [
-                        {
-                            "action": "impl_write",
-                            "scope_target": "scope",
-                            "expires_epoch": now,
-                            "uses_remaining": 1,
-                        }
-                    ]
-                },
-                f,
-            )
-        os.symlink(real_path, alias_path)
-        check(
-            "symlink alias fails closed",
-            tp.TokenStore(alias_path).consume("impl_write", "scope") is False,
-        )
-        with open(real_path, "r", encoding="utf-8") as f:
-            check("symlink alias leaves canonical token untouched", json.load(f)["tokens"][0]["uses_remaining"] == 1)
-
-    with tempfile.TemporaryDirectory() as d:
-        real_path = os.path.join(d, "tokens.json")
-        alias_path = os.path.join(d, "tokens-hardlink.json")
-        with open(real_path, "w", encoding="utf-8") as f:
-            json.dump(
-                {
-                    "tokens": [
-                        {
-                            "action": "impl_write",
-                            "scope_target": "scope",
-                            "expires_epoch": now,
-                            "uses_remaining": 1,
-                        }
-                    ]
-                },
-                f,
-            )
-        os.link(real_path, alias_path)
-        check(
-            "hardlink alias fails closed",
-            tp.TokenStore(alias_path).consume("impl_write", "scope") is False,
-        )
-        with open(real_path, "r", encoding="utf-8") as f:
-            check("hardlink alias leaves canonical token untouched", json.load(f)["tokens"][0]["uses_remaining"] == 1)
-
-
-def test_token_store_one_shot_consume_is_concurrency_safe():
-    print("\n[tool_policy] 同一one-shot tokenは並行consumeでも1回だけ成功する")
-    if "fork" not in multiprocessing.get_all_start_methods():
-        print("  SKIP  fork-based race fixture is unavailable on this platform")
-        return
-
-    ctx = multiprocessing.get_context("fork")
-    with tempfile.TemporaryDirectory() as d:
-        store_path = os.path.join(d, "tokens.json")
-        with open(store_path, "w", encoding="utf-8") as f:
-            json.dump(
-                {
-                    "tokens": [
-                        {
-                            "action": "impl_write",
-                            "scope_target": "scope",
-                            "expires_epoch": int(time.time()) + 1000,
-                            "uses_remaining": 1,
-                        }
-                    ]
-                },
-                f,
-            )
-
-        workers = 4
-        start_barrier = ctx.Barrier(workers)
-        result_queue = ctx.Queue()
-        processes = [
-            ctx.Process(
-                target=_consume_token_with_load_delay,
-                args=(store_path, start_barrier, result_queue),
-            )
-            for _ in range(workers)
-        ]
-        for process in processes:
-            process.start()
-
-        results = []
-        for _ in processes:
-            kind, value = result_queue.get(timeout=10)
-            assert kind == "result", value
-            results.append(value)
-        for process in processes:
-            process.join(timeout=10)
-            assert process.exitcode == 0
-
-        check(
-            "exactly one concurrent consume succeeds",
-            sum(result is True for result in results) == 1,
-            f"results={results}",
-        )
-        with open(store_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        check(
-            "one-shot token is exhausted once",
-            data["tokens"][0]["uses_remaining"] == 0,
-        )
-
-
-def test_token_store_post_commit_durability_failure_does_not_report_false():
-    print("\n[tool_policy] rename後のfsync失敗でも消費済みtokenを未消費と誤報しない")
-    with tempfile.TemporaryDirectory() as d:
-        store_path = os.path.join(d, "tokens.json")
-        with open(store_path, "w", encoding="utf-8") as f:
-            json.dump(
-                {
-                    "tokens": [
-                        {
-                            "action": "impl_write",
-                            "scope_target": "scope",
-                            "expires_epoch": int(time.time()) + 1000,
-                            "uses_remaining": 2,
-                        }
-                    ]
-                },
-                f,
-            )
-
-        original_fsync = os.fsync
-
-        def fail_directory_fsync(fd):
-            if stat.S_ISDIR(os.fstat(fd).st_mode):
-                raise OSError("directory durability unavailable")
-            return original_fsync(fd)
-
-        original_store_fsync = tp.os.fsync
-        tp.os.fsync = fail_directory_fsync
-        try:
-            consumed = tp.TokenStore(store_path).consume("impl_write", "scope")
-        finally:
-            tp.os.fsync = original_store_fsync
-
-        check("logical consume remains successful after committed rename", consumed is True)
-        with open(store_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        check("committed token decrement is preserved", data["tokens"][0]["uses_remaining"] == 1)
-
-
-def test_decision_state_path_resolution():
-    print("\n[decision_state] path resolution: env var優先・既定は ~/.ume-harness/state")
-    import importlib
-    ds_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "runtime")
-    sys.path.insert(0, ds_path)
-    import decision_state as ds
-    importlib.reload(ds)
-
-    old = os.environ.pop("UME_HARNESS_STATE_DIR", None)
-    try:
-        default_dir = ds.resolve_state_dir()
-        check(
-            "default resolves under ~/.ume-harness/state (no Claude-Code-specific slug)",
-            default_dir == os.path.expanduser("~/.ume-harness/state"),
-            f"got {default_dir}",
-        )
-        check(
-            "no personal username-embedded segment (-Users- pattern) in default path",
-            "-Users-" not in default_dir,
-            f"got {default_dir}",
-        )
-
-        os.environ["UME_HARNESS_STATE_DIR"] = "/tmp/custom-ume-harness-state"
-        custom_dir = ds.resolve_state_dir()
-        check("env var override honored", custom_dir == "/tmp/custom-ume-harness-state", f"got {custom_dir}")
-    finally:
-        if old is not None:
-            os.environ["UME_HARNESS_STATE_DIR"] = old
-        else:
-            os.environ.pop("UME_HARNESS_STATE_DIR", None)
-
-
-def test_decision_state_record_and_read_roundtrip():
-    print("\n[decision_state] record -> compaction-context のラウンドトリップ")
-    with tempfile.TemporaryDirectory() as d:
-        os.environ["UME_HARNESS_STATE_DIR"] = d
-        try:
-            import importlib
-            ds_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "runtime")
-            sys.path.insert(0, ds_path)
-            import decision_state as ds
-            importlib.reload(ds)
-
-            reg = ds.load_registry()
-            reg["tasks"]["t1"] = {
-                "status": "READY",
-                "hold_reason": None,
-                "blocked_dependencies": [],
-                "last_human_decision": {
-                    "decision_id": "dec_1",
-                    "action": "approve_edit",
-                    "summary": "test",
-                    "scope_target": "foo.md",
-                    "scope_digest": "abc",
-                    "issued_at": "now",
-                    "authority_lifecycle": "REVALIDATION_REQUIRED_AFTER_COMPACTION",
-                },
-            }
-            reg["active_task_id"] = "t1"
-            ds.save_registry_atomic(reg)
-
-            reloaded = ds.load_registry()
-            check(
-                "registry persists active_task_id",
-                reloaded.get("active_task_id") == "t1",
-                f"got {reloaded.get('active_task_id')}",
-            )
-            check(
-                "registry file lives under isolated state dir (not personal path)",
-                os.path.exists(os.path.join(d, "decision_registry.json")),
-            )
-        finally:
-            os.environ.pop("UME_HARNESS_STATE_DIR", None)
-
-
-def test_stop_adapter_all_conditions_met():
-    print("\n[stop_adapter] 5条件すべて満たせば STOP_COMPLETE")
-    c = sa.AcceptanceCheck(
-        required_acceptance_criteria_satisfied=True,
-        required_verification_completed=True,
-        deliverables_present=True,
-        persistence_confirmed_or_na=True,
-        unresolved_blockers=[],
-    )
-    check("evaluate() == STOP_COMPLETE", c.evaluate() == sa.AcceptanceStatus.STOP_COMPLETE)
-    check("unmet_points() empty", c.unmet_points() == [])
-
-
-def test_stop_adapter_missing_condition_blocks():
-    print("\n[stop_adapter] 1点でも未達なら CONTINUE_BLOCKED（強引にSTOPしない）")
-    c = sa.AcceptanceCheck(
-        required_acceptance_criteria_satisfied=True,
-        required_verification_completed=False,
-        deliverables_present=True,
-        persistence_confirmed_or_na=True,
-        unresolved_blockers=["waiting on human input"],
-    )
-    check("evaluate() == CONTINUE_BLOCKED", c.evaluate() == sa.AcceptanceStatus.CONTINUE_BLOCKED)
-    check("unmet_points() reports both issues", len(c.unmet_points()) == 2, f"got {c.unmet_points()}")
-
-
 def test_manifest_matches_explicit_release_closure():
     print("\n[manifest] MANIFEST.md は明示release closureと一致し、ambient filesystemに依存しない")
     pkg_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
@@ -593,6 +167,9 @@ def test_manifest_matches_explicit_release_closure():
         security_text = f.read()
     with open(os.path.join(pkg_root, "SUPPORT_MATRIX.md"), encoding="utf-8") as f:
         support_matrix_text = f.read()
+    manifest_normalized = " ".join(manifest_text.split())
+    security_normalized = " ".join(security_text.split())
+    support_normalized = " ".join(support_matrix_text.split())
     m = re.search(r"```\n(.*?)\n```", manifest_text, re.DOTALL)
     declared_files = [line.strip() for line in (m.group(1).splitlines() if m else []) if line.strip()]
     check(
@@ -613,19 +190,24 @@ def test_manifest_matches_explicit_release_closure():
     )
     check("generated identityがclosure内に1件だけ存在", release_payload.count(generated) == 1)
     check(
-        "MANIFEST.md のversionがcurrent releaseに一致",
-        f"# Release Manifest (ume-harness v{version} Technical Preview)" in manifest_text,
+        "current candidate identity is explicit and VERSION stays package-compatible",
+        "# Development candidate manifest — thin Japanese decision support" in manifest_text
+        and "Unreleased engineering candidate, intentionally different from published v0.1.7." in manifest_text
+        and version == package_manifest["version"],
     )
     check(
-        "過去v0.1.6の実測test countをcurrent candidateの証拠に書き換えない",
-        "Measured against the v0.1.6 release-candidate bytes on 2026-09-05 (historical count):" in manifest_text
-        and "  -> 324 passed" in manifest_text,
+        "MANIFEST keeps publication and migration boundaries explicit",
+        "No push, publication or live settings migration is implied." in manifest_normalized
+        and "Only ume-harness-engineering is canonical" in manifest_normalized
+        and "generated one-way mirror" in manifest_normalized,
     )
     check(
-        "配布security/support文書のversionがcurrent releaseに一致",
-        f"v{version} attests the explicit protected-runtime closure" in security_text
-        and f"# Support Matrix (v{version} Technical Preview)" in support_matrix_text
-        and "Historical baseline: v0.1.6 generated public release mirror / 2026-09-05" in support_matrix_text,
+        "security/support documents describe thin behavior and separate historical evidence",
+        "This policy describes the unreleased thin candidate" in security_normalized
+        and "UME is a non-executing preview plus two presentation hooks." in security_normalized
+        and "# Support Matrix — unreleased thin candidate" in support_normalized
+        and "## f999276 physical baseline" in support_normalized
+        and "Old managed E2E does not verify a retired feature in this changed candidate." in support_normalized,
     )
 
 
@@ -689,8 +271,9 @@ def test_positioning_assets_are_public_only_and_bounded():
         assert diagram.count('data-role="bridge"') == 1
         assert diagram.count('data-role="external"') == 2
         if locale == "ja":
-            assert diagram.count(">現在の実装</text>") == 2
-            assert ">方向性・未実装</text>" in diagram
+            assert diagram.count(">UMEの開発候補</text>") == 1
+            assert ">別repoの接続候補</text>" in diagram
+            assert ">明示handoff / 合成ローカル候補</text>" in diagram
             assert ">CURRENT</text>" not in diagram
             assert "DIRECTION / NOT_SHIPPED" not in diagram
         else:
@@ -702,8 +285,8 @@ def test_positioning_assets_are_public_only_and_bounded():
             assert ">path</tspan>" in diagram
             assert ">Separately configured executor</text>" not in diagram
 
-            assert ">Solid = implemented now</tspan>" in diagram
-            assert ">Dashed = not connected</tspan>" in diagram
+            assert ">Solid = responsibility flow</tspan>" in diagram
+            assert ">Dashed = explicit candidate route</tspan>" in diagram
             assert ">Outline = separately configured</tspan>" in diagram
             assert "Solid = implemented now    Dashed = not connected" not in diagram
 
@@ -714,22 +297,12 @@ def test_positioning_assets_are_public_only_and_bounded():
         assert "{service}" not in cards
         assert "{branch}" not in cards
         assert "{target}" not in cards
+        assert "PermissionRequest" in cards
+        assert "PostToolUseFailure" in cards
         if locale == "ja":
-            with open(
-                os.path.join(pkg_root, "common-language/packs/ja-JP/p0_concepts.json"),
-                encoding="utf-8",
-            ) as stream:
-                concepts = json.load(stream)["concepts"]
-            assert "PCの外へ出る（表示例）" in cards
-            assert "削除（表示例）" in cards
-            assert concepts["git.status"]["headline"] in cards
-            assert (
-                concepts["git.push.normal"]["headline"].format(
-                    service="GitHub", branch="作業ブランチ"
-                )
-                in cards
-            )
-            assert concepts["fs.delete"]["headline"].format(target="選択した対象") in cards
+            assert "作業前preview" in cards
+            assert "許可・拒否はホストで判断" in cards
+            assert "エラー本文は再掲しません" in cards
             assert "External Action Authority" not in cards
 
     generator_path = os.path.join(pkg_root, "assets/readme/source/generate_ume_harness_assets.py")
@@ -749,148 +322,6 @@ def test_manual_runner_invokes_positioning_asset_check():
         source = stream.read()
     main_body = source.rsplit("\ndef main():", 1)[1]
     assert "test_positioning_assets_are_public_only_and_bounded()" in main_body
-
-
-def test_three_plane_public_truth():
-    print("\n[docs] Japanese-language positioning separates current surfaces and the unwired bridge")
-    pkg_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
-    with open(os.path.join(pkg_root, "README.md"), encoding="utf-8") as f:
-        readme = f.read()
-    english_path = os.path.join(pkg_root, "README.en.md")
-    assert os.path.isfile(english_path), "README.en.md"
-    with open(english_path, encoding="utf-8") as f:
-        english = f.read()
-    with open(os.path.join(pkg_root, "VERSION"), encoding="utf-8") as f:
-        version = f.read().strip()
-    normalized = " ".join(readme.split())
-    english_normalized = " ".join(english.split())
-    first_screen = "\n".join(readme.splitlines()[:55])
-    check(
-        "README begins with ordinary Japanese value language",
-        "日本語で、雑に頼める。" in first_screen
-        and "作業へ進む前に" in first_screen
-        and "やること・確認すること・しないこと" not in first_screen,
-    )
-    check(
-        "README describes its Japanese-language focus before internal contract terms",
-        "日本語を中心に設計したハーネスです。" in first_screen
-        and "Japanese-first" not in first_screen
-        and "Authority Overlay" not in first_screen
-        and "Clarification Impact Contract" not in first_screen,
-    )
-    check(
-        "README makes no unsupported first-in-Japan claim",
-        "日本初" not in readme
-        and "日本一" not in readme
-        and "Japanese-first" not in readme
-        and "Japan's first" not in english
-        and "first in Japan" not in english,
-    )
-    check(
-        "standalone CLI is explicitly preview-only",
-        "standalone CLIはファイル操作を実行しません。" in readme
-        and "The standalone CLI presents a plan; it does not perform file operations." in english,
-    )
-    check(
-        "Quick Start discloses Claude transport and distinguishes requested side effects",
-        "## Preview Quick Start" in readme
-        and "Claude CLIの認証とネットワーク接続が必要" in readme
-        and "依頼文とcontextをClaudeへ送ります" in readme
-        and "依頼されたファイル操作や外部結果は実行しません" in readme
-        and "## Preview Quick Start" in english
-        and "authenticated Claude CLI and network access" in english
-        and "sends the request and context to Claude" in english
-        and "does not perform the requested file operations or consequential actions" in english,
-    )
-    check(
-        "Human Layer CLI and Claude Code Host Adapter are separate current surfaces",
-        "### 日本語Human Layer preview CLI" in readme
-        and "### Claude Code Host Adapter" in readme
-        and "### Human Layer preview CLI" in english
-        and "### Claude Code Host Adapter" in english,
-    )
-    check(
-        "responsibility bridge is explicitly unwired in both languages",
-        "現在の公開版同士に自動接続はありません。破線部分は未実装です。" in normalized
-        and "The current public releases have no automatic runtime bridge. The dashed connection is not implemented."
-        in english_normalized,
-    )
-    check(
-        "Mothership remains a complementary responsibility plane",
-        "UME-HARNESSは人間の意図を範囲の見えるローカル作業案へ整理します。" in normalized
-        and "Mothershipを自動で呼び出しません。" in normalized,
-    )
-    check(
-        "one GIF and one poster are referenced per locale",
-        readme.count("assets/readme/ja/ume-harness-human-layer.gif") == 1
-        and readme.count("assets/readme/ja/ume-harness-human-layer-poster.png") == 2
-        and english.count("assets/readme/en/ume-harness-human-layer.gif") == 1
-        and english.count("assets/readme/en/ume-harness-human-layer-poster.png") == 2
-        and 'media="(max-width: 600px)"' in readme
-        and 'media="(prefers-reduced-motion: reduce)"' in readme
-        and 'media="(max-width: 600px)"' in english
-        and 'media="(prefers-reduced-motion: reduce)"' in english,
-    )
-    check(
-        "README declares Technical Preview status",
-        "Technical Preview" in readme and "Technical Preview" in english,
-    )
-    check(
-        "README does not overclaim non-engineer safety",
-        "非エンジニアが自然な日本語で安全に仕事を任せられる" not in readme,
-    )
-    check(
-        "README discloses beginner usability validation status",
-        "非エンジニア向けの導入容易性は現在検証中です。" in readme
-        and "Ease of adoption for non-engineers remains under evaluation." in english,
-    )
-    check(
-        "README matches the current preview/report vocabulary",
-        "確認できる範囲" in readme
-        and "確認が必要な操作" in readme
-        and "まだ実行されていません" in readme
-        and "やること・確認すること・しないこと" not in readme
-        and "will do / needs confirmation / will not do" not in english,
-    )
-    check(
-        "README preserves canonical-source and generated-mirror boundary",
-        ("public " + chr(96) + "ume-harness" + chr(96) + "は明示closureから生成するrelease mirror") in readme,
-    )
-    check(
-        "README exposes public CI and the previous published release",
-        "https://github.com/UMEBOSHIISAN/ume-harness/actions/workflows/ci.yml/badge.svg" in readme
-        and "https://github.com/UMEBOSHIISAN/ume-harness/releases/tag/v0.1.6" in readme
-        and "https://github.com/UMEBOSHIISAN/ume-harness/releases/tag/v0.1.6" in english,
-    )
-    check(
-        "README identifies the current published release while retaining Technical Preview wording",
-        f"Technical Preview v{version}" in readme
-        and f"Technical Preview v{version}" in english
-        and f"https://github.com/UMEBOSHIISAN/ume-harness/releases/tag/v{version}" in readme
-        and f"https://github.com/UMEBOSHIISAN/ume-harness/releases/tag/v{version}" in english,
-    )
-    check(
-        "README and NOTICE distinguish project MIT code from the OFL font",
-        "project code is MIT" in english
-        and "Noto Sans JP" in english
-        and "SIL Open Font License 1.1" in english
-        and "プロジェクトのコードはMIT" in readme
-        and "SIL Open Font License 1.1" in readme,
-    )
-
-    with open(os.path.join(pkg_root, "NOTICE"), encoding="utf-8") as f:
-        notice = f.read()
-    check(
-        "NOTICE records the pinned Noto Sans JP provenance",
-        "Noto Sans JP" in notice
-        and "295d98a7a0c17c68f1341eaeea354e7960ea70d3" in notice
-        and "c2f3b4d463500a2ddcd3849cded1fceeb9fd6d1c32e6cbecd568453ba50fc68f" in notice
-        and "SIL Open Font License 1.1" in notice,
-    )
-    check(
-        "github profile is not used as Harness identity above current implementation",
-        "github.merge_pr" not in readme[:readme.index("## 現在の実装")],
-    )
 
 
 def test_japanese_human_layer_fixture_consistency():
@@ -916,21 +347,8 @@ def main():
     test_tier_constitution_readonly_allowed_else_deny()
     test_tier_runtime_code_no_forced_delegation()
     test_unknown_side_effect_fail_closed()
-    test_classify_command_side_effect()
-    test_token_store_consumes_single_earliest_token()
-    test_token_store_expired_token_not_consumed()
-    test_token_store_post_commit_durability_failure_does_not_report_false()
-    test_token_store_rejects_unscoped_token_for_scoped_consume()
-    test_token_store_rejects_malformed_documents_without_authorizing()
-    test_token_store_rejects_symlink_and_hardlink_aliases()
-    test_token_store_one_shot_consume_is_concurrency_safe()
-    test_decision_state_path_resolution()
-    test_decision_state_record_and_read_roundtrip()
-    test_stop_adapter_all_conditions_met()
-    test_stop_adapter_missing_condition_blocks()
     test_manifest_matches_explicit_release_closure()
     test_positioning_assets_are_public_only_and_bounded()
-    test_three_plane_public_truth()
     test_japanese_human_layer_fixture_consistency()
 
     print(f"\n=== {PASS} passed, {FAIL} failed ===")

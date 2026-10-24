@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ume-harness.local/schemas/intent_interpreter_output.v0.json",
   "title": "intent_interpreter_output.v0",
-  "description": "ux/japanese-human-layer/prompts/intent_interpreter.md が要求するLLM出力の形式定義。runtime/human_layer_adapter.py の実装（Rev.2・FROZEN）と1:1対応する。このschemaはドキュメント/バリデーション用途であり、runtime側の正本はPythonコード（normalize_impact_value/is_valid_basis等）である。両者が食い違った場合はコードを正とする。",
+  "description": "intent_interpreter.mdが要求する出力形式。runtimeは必須root項目と型を分類前に検査し、不正な操作配列をBLOCKする。Clarification Impactの既存正規化（未知値をUNKNOWNへ扱う等）は維持するため、厳密なschema受理判定との同一性は主張しない。runtime側の正本はhuman_layer_adapter.pyである。",
   "type": "object",
   "additionalProperties": false,
   "required": ["work_type", "inferred_intent", "inferred_deliverable", "candidate_actions", "clarification_assessments"],
@@ -17,7 +17,7 @@
     "candidate_actions": {
       "type": "array",
       "items": { "type": "string" },
-      "description": "Authority Overlay（tool_policy.py）が独立に再分類する。この配列の内容をLLMがどう自己評価しているかはruntimeで一切信用されない。"
+      "description": "文字列配列を必須とし、明示した接続表現の複合操作は元candidateのsource_actionを保持して分割する。自然文による分類やモデルのeffect自己申告は実行権限にならない。実toolの権限評価は別途host adapterが行う。"
     },
     "clarification_assessments": {
       "type": "array",

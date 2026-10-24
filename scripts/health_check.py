@@ -15,7 +15,7 @@ import sys
 from typing import Any
 
 
-EXPECTED_ROOT_DIGEST = "6bf4573209f791117e145ac96ee544410827cee0a3a44626be168ee070bede65"
+EXPECTED_ROOT_DIGEST = "76a8a54332f8b50face686cd5e8ebef45da17bcf3e493d8602697f1f5aa5425e"
 IDENTITY_ALGORITHM = "sha256-canonical-path-map-v1"
 IDENTITY_SELF_EXCLUSIONS = frozenset({"scripts/health_check.py"})
 MANDATORY_RELEASE_FILES = frozenset({
@@ -24,7 +24,6 @@ MANDATORY_RELEASE_FILES = frozenset({
     "runtime/common_language_pack.py",
     "common-language/packs/ja-JP/p0_concepts.json",
     "common-language/schema/concept_pack.schema.json",
-    "adapters/claude-code/pretooluse_hook.py",
     "adapters/claude-code/permission_request_hook.py",
     "adapters/claude-code/posttooluse_failure_hook.py",
 })
@@ -244,7 +243,7 @@ def verify_owned_install(installed_dir: str) -> tuple[bool, str]:
 
 
 def run_diagnostics(installed_dir: str, prefix_dir: str | None = None, json_output: bool = False,
-                    settings_path: str | None = None, state_dir: str | None = None) -> int:
+                    settings_path: str | None = None) -> int:
     installed_dir = os.path.abspath(installed_dir)
     explicit_prefix = prefix_dir is not None
     if prefix_dir:
@@ -313,12 +312,9 @@ def run_diagnostics(installed_dir: str, prefix_dir: str | None = None, json_outp
                 f"{os.path.join(installed_dir, 'ux', 'japanese-human-layer')}"
             )
             trace_code = """
-import activation_updater
 import common_language_pack
 import hook_setup_service
 import human_layer_adapter
-import local_execution_gate
-import stop_adapter
 import tool_policy
 import translation_konjac
 print("IMPORT_OK")
@@ -354,41 +350,14 @@ print("IMPORT_OK")
                     raise ValueError(proc.stderr[:400])
                 inventory = json.loads(proc.stdout)
                 registration_ok = inventory.get("connected_mode") in (
-                    "absent", "disconnected", "presentation", "managed"
+                    "absent", "disconnected", "presentation"
                 ) and not inventory.get("findings")
                 registration_detail = json.dumps(inventory, ensure_ascii=False)
             except Exception as exc:
                 registration_detail = f"File inventory failed: {exc}; live effective settings unknown"
         checks.append(("Hook Registration File Inventory", registration_ok, registration_detail))
 
-    if state_dir is not None:
-        profile_ok = False
-        profile_detail = "Skipped until release byte identity passes"
-        if identity_ok:
-            try:
-                profile_env = sub_env.copy()
-                profile_env["PYTHONPATH"] += os.pathsep + os.path.join(installed_dir, "adapters", "claude-code")
-                proc = subprocess.run(
-                    [sys.executable, "-B", "-c",
-                     "import json, os, sys; import lease_gate_runner as r; "
-                     "roots = r._protected_roots(sys.argv[1], sys.argv[2]); "
-                     "print(json.dumps({'status': 'valid' if os.path.lexists(os.path.join(sys.argv[1], 'local_work_policy.json')) "
-                     "else 'absent; built-in protection only', 'protected_roots': roots}))",
-                     os.path.abspath(state_dir), installed_dir],
-                    cwd=os.path.join(installed_dir, "runtime"), env=profile_env,
-                    capture_output=True, text=True, timeout=10,
-                )
-                if proc.returncode != 0:
-                    raise ValueError(proc.stderr[-400:])
-                profile_detail = json.dumps(json.loads(proc.stdout), ensure_ascii=False)
-                profile_ok = True
-            except Exception as exc:
-                profile_detail = f"Profile validation failed: {exc}"
-        checks.append(("Local Work Policy Profile", profile_ok, profile_detail))
-
     adapter_files = [
-        "adapters/claude-code/lease_gate_runner.py",
-        "adapters/claude-code/pretooluse_hook.py",
         "adapters/claude-code/permission_request_hook.py",
         "adapters/claude-code/posttooluse_failure_hook.py",
         "adapters/claude-code/settings.json.fragment",
@@ -404,8 +373,7 @@ print("IMPORT_OK")
         "All present" if not adapter_missing else f"Missing: {adapter_missing}",
     ))
     hook_files = [
-        "adapters/claude-code/pretooluse_hook.py",
-        "adapters/claude-code/permission_request_hook.py",
+            "adapters/claude-code/permission_request_hook.py",
         "adapters/claude-code/posttooluse_failure_hook.py",
     ]
     non_executable_hooks = [
@@ -449,7 +417,6 @@ def main(argv=None) -> int:
     parser.add_argument("--installed-dir", default=None, help="Installed version directory")
     parser.add_argument("--prefix", default=None, help="Installation prefix")
     parser.add_argument("--settings-path", help="Explicit settings file to inventory (not live effective settings)")
-    parser.add_argument("--state-dir", help="Explicit state directory for read-only local policy profile validation")
     parser.add_argument("--identity-only", action="store_true", help="Verify only explicit release bytes")
     parser.add_argument(
         "--owned-install-only",
@@ -475,7 +442,7 @@ def main(argv=None) -> int:
         passed, detail = verify_owned_install(os.path.abspath(installed_dir))
         return _print_summary([("Owned Install Closure", passed, detail)], args.json)
     return run_diagnostics(installed_dir, prefix_dir=args.prefix, json_output=args.json,
-                           settings_path=args.settings_path, state_dir=args.state_dir)
+                           settings_path=args.settings_path)
 
 
 if __name__ == "__main__":
